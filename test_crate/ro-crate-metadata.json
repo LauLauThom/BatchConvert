@@ -1,0 +1,117 @@
+{
+    "@context": "https://w3id.org/ro/crate/1.1/context",
+    "@graph": [
+        {
+            "@id": "./",
+            "@type": "Dataset",
+            "author": [
+                {
+                    "@id": "https://orcid.org/0000-0001-9823-0581"
+                }
+            ],
+            "datePublished": "2025-03-26T14:42:26+00:00",
+            "hasPart": [
+                {
+                    "@id": "batchconvert"
+                },
+                {
+                    "@id": "pff2ometiff.nf"
+                },
+                {
+                    "@id": "pff2omezarr.nf"
+                }
+            ],
+            "mainEntity": {
+                "@id": "batchconvert"
+            }
+        },
+        {
+            "@id": "ro-crate-metadata.json",
+            "@type": "CreativeWork",
+            "about": {
+                "@id": "./"
+            },
+            "conformsTo": [
+                {
+                    "@id": "https://w3id.org/ro/crate/1.1"
+                },
+                {
+                    "@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0"
+                }
+            ]
+        },
+        {
+            "@id": "#bash",
+            "@type": "ComputerLanguage",
+            "identifier": {
+                "@id": "https://www.gnu.org/software/bash/"
+            },
+            "name": "Bash",
+            "url": {
+                "@id": "https://www.gnu.org/software/bash/"
+            }
+        },
+        {
+            "@id": "batchconvert",
+            "@type": [
+                "File",
+                "SoftwareSourceCode",
+                "ComputationalWorkflow"
+            ],
+            "hasPart": [
+                {
+                    "@id": "pff2ometiff.nf"
+                },
+                {
+                    "@id": "pff2omezarr.nf"
+                }
+            ],
+            "name": "batchconvert",
+            "programmingLanguage": {
+                "@id": "#bash"
+            }
+        },
+        {
+            "@id": "pff2ometiff.nf",
+            "@type": [
+                "File",
+                "SoftwareSourceCode",
+                "ComputationalWorkflow"
+            ],
+            "description": "Nextflow workflow executed when passing the argument (i.e converting to) 'ometiff' as first argument to the BatchConvert utility.",
+            "name": "pff2ometiff",
+            "programmingLanguage": {
+                "@id": "https://w3id.org/workflowhub/workflow-ro-crate#nextflow"
+            }
+        },
+        {
+            "@id": "https://w3id.org/workflowhub/workflow-ro-crate#nextflow",
+            "@type": "ComputerLanguage",
+            "identifier": {
+                "@id": "https://www.nextflow.io/"
+            },
+            "name": "Nextflow",
+            "url": {
+                "@id": "https://www.nextflow.io/"
+            }
+        },
+        {
+            "@id": "pff2omezarr.nf",
+            "@type": [
+                "File",
+                "SoftwareSourceCode",
+                "ComputationalWorkflow"
+            ],
+            "description": "Nextflow workflow executed when passing the argument (i.e converting to) 'omezarr' as first argument to the BatchConvert utility.",
+            "name": "pff2omezarr",
+            "programmingLanguage": {
+                "@id": "https://w3id.org/workflowhub/workflow-ro-crate#nextflow"
+            }
+        },
+        {
+            "@id": "https://orcid.org/0000-0001-9823-0581",
+            "@type": "Person",
+            "Name": "Bugra \u00d6zdemir"
+        }
+    ]
+}
