@@ -4,6 +4,7 @@ import shutil
 
 if __name__ == "__main__":
     scriptpath = os.path.dirname(os.path.realpath(__file__))
+    # Recover the env variable defined by the first bash script
     homepath = os.environ.get('HOMEPATH')
     temppath = os.environ.get('TEMPPATH')
     parampath = os.environ.get('PARAMPATH')

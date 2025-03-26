@@ -92,7 +92,7 @@ elif [[ $process == 'converted' ]];
   then
     printf "${GREEN}Nextflow script has been created. Workflow is beginning.\n${NORMAL}" && \
     chmod +x $BINPATH/run_conversion.py && \
-    pythonexe $SCRIPTPATH/bin/run_nextflow_cli.py
+    pythonexe $SCRIPTPATH/bin/run_nextflow_cli.py # where the nextflow workflow are actually started
 fi
 
 if [[ -f $TEMPPATH/.process ]];
