@@ -31,7 +31,7 @@ bftoolsParams = ["noflat", "series", "timepoint", "channel", "z_slice", "range",
                   "autoscale", "crop", "compression_tiff", "resolutions_tiff",
                  'resolution_scale']
 # common = set([item for item in bftoolsParams + bf2rawParams if item in bftoolsParams and item in bf2rawParams])
-bf2raw_params = [item for item in bf2rawParams if not item in bftoolsParams]
+bf2raw_params  = [item for item in bf2rawParams  if not item in bftoolsParams]
 bftools_params = [item for item in bftoolsParams if not item in bf2rawParams]
 s3_params = ["S3REMOTE", "S3ENDPOINT", "S3ACCESS", "S3SECRET", "S3BUCKET"]
 bia_params = ["BIA_REMOTE"]

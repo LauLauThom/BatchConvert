@@ -38,6 +38,8 @@ from pathlib import Path
 #     return outpath
 
 if __name__ == '__main__':
+    import make_workflow_crate
+
     scriptpath = os.path.dirname(os.path.realpath(__file__))
     homepath = os.environ.get('HOMEPATH')
     temppath = os.environ.get('TEMPPATH')
@@ -45,7 +47,7 @@ if __name__ == '__main__':
     configpath = os.environ.get('CONFIGPATH')
     defparamfile = os.path.join(parampath, 'params.json.default')
     backupparamfile = os.path.join(parampath, 'params.json.backup')
-    paramfile = os.path.join(parampath, 'params.json')
+    paramfile = os.path.join(parampath, 'params.json') # load the file with the args passed to the cmd line
     configfile = os.path.join(configpath, 'bftools.config')
 
     if not os.path.exists(parampath):
@@ -67,20 +69,52 @@ if __name__ == '__main__':
 
     logdir = os.path.join(args.workdir, 'logs/.nextflow.log')
 
-    cmd0 = []
-    cmd0 += ["nextflow", "-C", configfile, "-log", logdir]
-    if args.output_type == 'ometiff':
-        cmd0 += ["run", f"{scriptpath}/../pff2ometiff.nf"]
-    elif args.output_type == 'omezarr':
-        cmd0 += ["run", f"{scriptpath}/../pff2omezarr.nf"]
-    cmd0 += [f"-params-file", paramfile, "-profile", args.profile]
-    cmd1 = ["nextflow", "clean", "but", "none", "-n", "-f"]
+    # Command to call the nextflow conversion workflow
+    conversion_command = ["nextflow", "-C", configfile, "-log", logdir, "run"]
 
+    if args.output_type == 'ometiff':
+        conversion_command.append(f"{scriptpath}/../pff2ometiff.nf")
+    
+    elif args.output_type == 'omezarr':
+        conversion_command.append(f"{scriptpath}/../pff2omezarr.nf")
+    
+    # add file with parameter values and the execution profile
+    conversion_command += [f"-params-file", paramfile, "-profile", args.profile]
+    
+    # Change running directory
     curpath = os.getcwd()
     os.chdir(temppath)
-    subprocess.run(cmd0, check = True, shell = False)
-    subprocess.run(cmd1, check = True, shell = False)
+
+    # Start the conversion workflow
+    subprocess.run(conversion_command, check = True, shell = False)
+    
+    # Call the nextflow clean after running the wf
+    subprocess.run(["nextflow", "clean", "but", "none", "-n", "-f"], 
+                   check = True, 
+                   shell = False)
+    
+    # Reset current directory to the one before running the nextflow
     os.chdir(curpath)
+
+    # Create a run crate if the flag is set
+    make_run_crate = True
+    if make_run_crate:
+        
+        main_dir = "" # TODO add main directory, should be repos root
+        crate = make_workflow_crate.create_workflow_crate(main_dir)
+
+        if args.output_type == "ometiff":
+            conversion_wf_name = "pff2ometiff.nf"
+        
+        elif args.output_type == "omezarr":
+            conversion_wf_name = "pff2omezarr.nf" 
+
+        else:
+            raise NotImplementedError()
+        
+        # get the conversion wf entity to be able to reference it
+        conversion_wf_entity = crate.get(conversion_wf_name)
+        
 
 
 
