@@ -10,3 +10,4 @@ dependencies:
   - bftools
   - go-mc
   - aspera-cli
+  - rocrate
