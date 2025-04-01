@@ -2,3 +2,4 @@ pythonexe
 changes.md
 .DS_Store
 BatchConvert.code-workspace
+*.pyc
