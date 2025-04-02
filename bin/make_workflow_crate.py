@@ -42,7 +42,11 @@ def createFormalParameter(crate : ROCrate,
 
 def create_workflow_crate(base_directory : str) -> ROCrate:
     """
-    Create a workflow crate.
+    Create a Workflow RO crate representing the BatchConvert implementation.  
+    It describes the entry point executable (batchconvert), the nextflow conversion workflow(s) and some parameters that can be passed to the batchconvert command.  
+    
+    The function DOES NOT return a Run Crate. A run crate can be created only once a conversion was performed with BatchConvert.  
+    A run crate can be created by modifying/adding entries to the Workflow crate returned here, such as documenting values taken by parameters originally documented in the WF crate.  
     """
     # Create a crate for the given directory
     # Files and folder will be added manually
@@ -58,6 +62,8 @@ def create_workflow_crate(base_directory : str) -> ROCrate:
     crate.add(bash) # need to add the item first then reference it
     main_wf = cast(Entity, crate.add_workflow("batchconvert", main=True, lang = bash))  # type: ignore
 
+    # Create an input parameter for the conversion format
+    # this is the first argument passed to the batchconvert command
     param_format = createFormalParameter(crate,
                                          id = "#conversion_format",
                                          additionalType = "Text",
