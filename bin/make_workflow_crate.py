@@ -6,7 +6,39 @@ import rocrate
 
 from rocrate.rocrate import ROCrate
 from rocrate.model   import ComputerLanguage
+from rocrate.model.entity import Entity
 from rocrate.model.person import Person
+from rocrate.model.contextentity import ContextEntity
+from typing import Literal, Optional, cast
+
+
+def createFormalParameter(crate : ROCrate,
+                          id: str, 
+                          additionalType : Literal["Text", "Boolean", "Integer", "Dataset", "File"], 
+                          name:str, 
+                          description : Optional[str] = None,
+                          valueRequired = False) -> ContextEntity:
+    """
+    Create a FormalParameter to describe an input or output of a workflow.  
+    The FormalParameter is created in the crate as a separate entity, and returned by the function.  
+    The caller should then associate the returned FormalParameter entity to the workflow of interest. 
+    """
+    properties = {"@type": "FormalParameter",
+                  "additionalType" : additionalType,
+                  "valueRequired" : valueRequired,
+                  "conformsTo": {
+                            "@id": "https://bioschemas.org/profiles/FormalParameter/1.0-RELEASE"
+                            },
+                  "name" : name
+                 }
+    
+    if description:
+        properties["description"] = description
+    
+    return cast(ContextEntity, crate.add(ContextEntity(crate, 
+                                                        identifier = id if id.startswith("#") else f"#{id}",
+                                                        properties = properties)))
+
 
 def create_workflow_crate(base_directory : str) -> ROCrate:
     """
@@ -24,8 +56,17 @@ def create_workflow_crate(base_directory : str) -> ROCrate:
                                                                     "url": {"@id": bash_url}
                                                                     })
     crate.add(bash) # need to add the item first then reference it
-    main_wf = crate.add_workflow("batchconvert", main=True, lang = bash) # type: ignore
+    main_wf = cast(Entity, crate.add_workflow("batchconvert", main=True, lang = bash))  # type: ignore
 
+    param_format = createFormalParameter(crate,
+                                         id = "#conversion_format",
+                                         additionalType = "Text",
+                                         name = "conversion_format",
+                                         valueRequired = True,
+                                         description = "Either 'ometiff' or 'omezarr'")
+    main_wf["input"] = [param_format]
+
+    
     # Try adding the subworkflows has part of the WF crate
     # For a run, one could omit the one not used, or only mention the one used via a createAction
     # Same process, create the entities and add them to the crate (done in one go by add_workflow here), then link them to the main wf
@@ -47,7 +88,9 @@ def create_workflow_crate(base_directory : str) -> ROCrate:
     # Add the authors and institution potentially
     # works but not added as author of the workflow
     # TODO add more authors
-    author = crate.add(Person(crate, identifier="https://orcid.org/0000-0001-9823-0581", properties={"Name" : "Bugra Özdemir"})) # the O with umlaut gets a unicode character code, which is OK in a UI it renders properly
+    author = crate.add(Person(crate, 
+                              identifier="https://orcid.org/0000-0001-9823-0581", 
+                              properties={"name" : "Bugra Özdemir"})) # the O with umlaut gets a unicode character code, which is OK in a UI it renders properly
     #crate["Authors"] = author # nope
 
     # Add the authors at the root of the dataset entity as expected by workflow hub

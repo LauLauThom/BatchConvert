@@ -9,7 +9,7 @@
                     "@id": "https://orcid.org/0000-0001-9823-0581"
                 }
             ],
-            "datePublished": "2025-03-26T14:42:26+00:00",
+            "datePublished": "2025-04-02T10:02:08+00:00",
             "hasPart": [
                 {
                     "@id": "batchconvert"
@@ -66,10 +66,26 @@
                     "@id": "pff2omezarr.nf"
                 }
             ],
+            "input": [
+                {
+                    "@id": "#conversion_format"
+                }
+            ],
             "name": "batchconvert",
             "programmingLanguage": {
                 "@id": "#bash"
             }
+        },
+        {
+            "@id": "#conversion_format",
+            "@type": "FormalParameter",
+            "additionalType": "Text",
+            "conformsTo": {
+                "@id": "https://bioschemas.org/profiles/FormalParameter/1.0-RELEASE"
+            },
+            "description": "Either 'ometiff' or 'omezarr'",
+            "name": "conversion_format",
+            "valueRequired": true
         },
         {
             "@id": "pff2ometiff.nf",
@@ -111,7 +127,7 @@
         {
             "@id": "https://orcid.org/0000-0001-9823-0581",
             "@type": "Person",
-            "Name": "Bugra \u00d6zdemir"
+            "name": "Bugra \u00d6zdemir"
         }
     ]
 }
