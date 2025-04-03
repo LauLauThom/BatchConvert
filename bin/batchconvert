@@ -129,6 +129,8 @@ if __name__ == "__main__":
     ### add work directory path
     ometiff.add_argument('--keep_workdir', default = getdef('keep_workdir', False), action = 'store_true')
 
+    ### TODO add the --prov flag here
+
     ### add patterns to filter input
     ometiff.add_argument('--pattern', '-p', default=getdef('pattern', ""), type=str)
     ometiff.add_argument('--reject_pattern', '-rp', default=getdef('reject_pattern', ""), type=str)
@@ -270,7 +272,7 @@ if __name__ == "__main__":
     reset = subparsers.add_parser('reset_defaults')
     show_default_params = subparsers.add_parser('show_default_params')
 
-    args = parser.parse_args()
+    args = parser.parse_args() # here actually parse the args from the command line
     keys = args.__dict__.keys()
     # for item in keys:
     #     print("%s: %s" % (item, args.__dict__[item]))
