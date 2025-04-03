@@ -9,16 +9,16 @@
                     "@id": "https://orcid.org/0000-0001-9823-0581"
                 }
             ],
-            "datePublished": "2025-04-02T10:02:08+00:00",
+            "datePublished": "2025-04-03T12:10:35+00:00",
             "hasPart": [
                 {
                     "@id": "batchconvert"
                 },
                 {
-                    "@id": "pff2ometiff.nf"
+                    "@id": "pff2omezarr.nf"
                 },
                 {
-                    "@id": "pff2omezarr.nf"
+                    "@id": "pff2ometiff.nf"
                 }
             ],
             "mainEntity": {
@@ -60,21 +60,30 @@
             ],
             "hasPart": [
                 {
-                    "@id": "pff2ometiff.nf"
+                    "@id": "pff2omezarr.nf"
                 },
                 {
-                    "@id": "pff2omezarr.nf"
+                    "@id": "pff2ometiff.nf"
                 }
             ],
             "input": [
                 {
                     "@id": "#conversion_format"
+                },
+                {
+                    "@id": "#merge_files"
+                },
+                {
+                    "@id": "#concatenation_order"
                 }
             ],
             "name": "batchconvert",
             "programmingLanguage": {
                 "@id": "#bash"
-            }
+            },
+            "url": [
+                "https://github.com/Euro-BioImaging/BatchConvert"
+            ]
         },
         {
             "@id": "#conversion_format",
@@ -88,14 +97,37 @@
             "valueRequired": true
         },
         {
-            "@id": "pff2ometiff.nf",
+            "@id": "#merge_files",
+            "@type": "FormalParameter",
+            "additionalType": "Boolean",
+            "conformsTo": {
+                "@id": "https://bioschemas.org/profiles/FormalParameter/1.0-RELEASE"
+            },
+            "description": "If multiple source files should be concatenated into a single ome-tiff/ome-zarr. Can be used together with the concatenation_order parameter to instruct the dimensions, otherwise batchconvert will automatically group datasets (see the doc).",
+            "name": "merge_files",
+            "valueRequired": false
+        },
+        {
+            "@id": "#concatenation_order",
+            "@type": "FormalParameter",
+            "additionalType": "Text",
+            "conformsTo": {
+                "@id": "https://bioschemas.org/profiles/FormalParameter/1.0-RELEASE"
+            },
+            "defaultValue": "auto",
+            "description": "Can be used with the --merge_files flag to pass custom dimensions specifiers.",
+            "name": "concatenation_order",
+            "valueRequired": false
+        },
+        {
+            "@id": "pff2omezarr.nf",
             "@type": [
                 "File",
                 "SoftwareSourceCode",
                 "ComputationalWorkflow"
             ],
             "description": "Nextflow workflow executed when passing the argument (i.e converting to) 'ometiff' as first argument to the BatchConvert utility.",
-            "name": "pff2ometiff",
+            "name": "pff2omezarr",
             "programmingLanguage": {
                 "@id": "https://w3id.org/workflowhub/workflow-ro-crate#nextflow"
             }
@@ -112,14 +144,14 @@
             }
         },
         {
-            "@id": "pff2omezarr.nf",
+            "@id": "pff2ometiff.nf",
             "@type": [
                 "File",
                 "SoftwareSourceCode",
                 "ComputationalWorkflow"
             ],
             "description": "Nextflow workflow executed when passing the argument (i.e converting to) 'omezarr' as first argument to the BatchConvert utility.",
-            "name": "pff2omezarr",
+            "name": "pff2ometiff",
             "programmingLanguage": {
                 "@id": "https://w3id.org/workflowhub/workflow-ro-crate#nextflow"
             }

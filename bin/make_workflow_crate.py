@@ -1,6 +1,9 @@
 """
 Module to create a WF (run) crate for a run of the BatchConvert tool i.e a conversion.
 """
+import os
+from pathlib import Path
+import shutil
 import rocrate
 #print(rocrate.__path__)
 
@@ -11,13 +14,18 @@ from rocrate.model.person import Person
 from rocrate.model.contextentity import ContextEntity
 from typing import Literal, Optional, cast
 
+from typing import NewType
+
+BcWorkflowCrate = NewType("BcWorkflowCrate", ROCrate)
+"""A pseudo custom type for BatchConvert workflow crate, just to facilitate type checking."""
 
 def createFormalParameter(crate : ROCrate,
                           id: str, 
                           additionalType : Literal["Text", "Boolean", "Integer", "Dataset", "File"], 
                           name:str, 
                           description : Optional[str] = None,
-                          valueRequired = False) -> ContextEntity:
+                          valueRequired = False,
+                          defaultValue = None) -> ContextEntity:
     """
     Create a FormalParameter to describe an input or output of a workflow.  
     The FormalParameter is created in the crate as a separate entity, and returned by the function.  
@@ -34,23 +42,34 @@ def createFormalParameter(crate : ROCrate,
     
     if description:
         properties["description"] = description
-    
+
+    if defaultValue:
+        properties["defaultValue"] = defaultValue
+
     return cast(ContextEntity, crate.add(ContextEntity(crate, 
                                                         identifier = id if id.startswith("#") else f"#{id}",
                                                         properties = properties)))
 
-
-def create_workflow_crate(base_directory : str) -> ROCrate:
+def create_workflow_crate(repo_root_dir:str) -> BcWorkflowCrate:
     """
     Create a Workflow RO crate representing the BatchConvert implementation.  
     It describes the entry point executable (batchconvert), the nextflow conversion workflow(s) and some parameters that can be passed to the batchconvert command.  
     
     The function DOES NOT return a Run Crate. A run crate can be created only once a conversion was performed with BatchConvert.  
     A run crate can be created by modifying/adding entries to the Workflow crate returned here, such as documenting values taken by parameters originally documented in the WF crate.  
+
+    repo_root_dir
+    -------------
+    Directory where the batchconvert, nextflow and other script files are.  
+
+    converted_image_directory
+    --------
+    Directory for the root entity of the crate.  
+    Elements added to the crate will have their identifier (path) relative to this root.  
     """
-    # Create a crate for the given directory
+    # Create a crate
     # Files and folder will be added manually
-    crate = ROCrate(source = base_directory)
+    crate = cast(BcWorkflowCrate, ROCrate()) # dont pass a source here, it is either used with init = True to list all files in an existing dir (and subdir), or used to load an existing crate
 
     # crate.add_workflow("batchconvert", main=True, lang = "shell") # throws an error, currently lang has to be one of "cwl", "galaxy", "knime", "nextflow", "snakemake", "compss", "autosubmit"
     # However one can also pass a ComputerLanguage object to lang, see https://github.com/ResearchObject/ro-crate-py/issues/218#issuecomment-2753694857
@@ -60,27 +79,65 @@ def create_workflow_crate(base_directory : str) -> ROCrate:
                                                                     "url": {"@id": bash_url}
                                                                     })
     crate.add(bash) # need to add the item first then reference it
-    main_wf = cast(Entity, crate.add_workflow("batchconvert", main=True, lang = bash))  # type: ignore
 
-    # Create an input parameter for the conversion format
-    # this is the first argument passed to the batchconvert command
+    # the wf file will be copied from the source, to the directory where the crate will be saved (using crate.write)
+    main_wf = cast(Entity, crate.add_workflow(source = os.path.join(repo_root_dir, "batchconvert"), 
+                                              main=True, 
+                                              lang = bash))  # type: ignore
+
+    # Create input parameters
     param_format = createFormalParameter(crate,
                                          id = "#conversion_format",
                                          additionalType = "Text",
                                          name = "conversion_format",
                                          valueRequired = True,
                                          description = "Either 'ometiff' or 'omezarr'")
-    main_wf["input"] = [param_format]
-
     
-    # Try adding the subworkflows has part of the WF crate
+    param_src_dir = createFormalParameter(crate,
+                                          id = "#src_dir",
+                                          additionalType = "Text",
+                                          name = "src_dir",
+                                          valueRequired = True,
+                                          description = "Input directory with images to convert.") 
+    
+    param_dst_dir = createFormalParameter(crate,
+                                         id = "#dest_dir",
+                                         additionalType = "Text",
+                                         name = "dest_dir",
+                                         valueRequired = True,
+                                         description = "Output directory with converted images.") 
+    
+    
+    param_merge_files = createFormalParameter(crate,
+                                              id = "#merge_files",
+                                              additionalType = "Boolean",
+                                              name = "merge_files",
+                                              valueRequired = False,
+                                              defaultValue = False,
+                                              description = "Flag --merge_files, if multiple source files should be concatenated into a single ome-tiff/ome-zarr. Can be used together with the concatenation_order parameter to instruct the dimensions, otherwise batchconvert will automatically group datasets (see the doc).")
+    
+    param_concatenation_order = createFormalParameter(crate,
+                                                      id = "#concatenation_order",
+                                                      additionalType = "Text",
+                                                      name = "concatenation_order",
+                                                      valueRequired = False,
+                                                      defaultValue = "auto",
+                                                      description = "Can be used with the --merge_files flag to pass custom dimensions specifiers.")
+                
+    main_wf["input"] = [param_format, 
+                        param_src_dir,
+                        param_dst_dir,
+                        param_merge_files, 
+                        param_concatenation_order]
+
+    # Adding the subworkflows has part of the WF crate
     # For a run, one could omit the one not used, or only mention the one used via a createAction
     # Same process, create the entities and add them to the crate (done in one go by add_workflow here), then link them to the main wf
-    workflow_tiff = crate.add_workflow(source = "pff2ometiff.nf", 
+    workflow_tiff = crate.add_workflow(source = os.path.join(repo_root_dir, "pff2omezarr.nf"),
                                        main = False,
                                        lang = "nextflow")
 
-    workflow_zarr = crate.add_workflow(source = "pff2omezarr.nf", 
+    workflow_zarr = crate.add_workflow(source = os.path.join(repo_root_dir, "pff2ometiff.nf"), 
                                        main = False,
                                        lang = "nextflow")
 
@@ -90,6 +147,7 @@ def create_workflow_crate(base_directory : str) -> ROCrate:
     workflow_zarr["description"] = desc_template.format("omezarr") # type: ignore
 
     main_wf["hasPart"] = [workflow_tiff, workflow_zarr]  # type: ignore
+    main_wf["url"]     = ["https://github.com/Euro-BioImaging/BatchConvert"]
 
     # Add the authors and institution potentially
     # works but not added as author of the workflow
@@ -117,3 +175,72 @@ def create_workflow_crate(base_directory : str) -> ROCrate:
     #crate.write_crate("my_crate")
 
     return crate
+
+def add_output_dataset(crate: ROCrate, output_image_dir : str|Path):
+    """
+    Add a dataset entry to the RO crate with the converted images.
+    Before calling this function, best is to move the images from the output directory of batchconvert to a new subdirectory e.g "images".  
+    Then passing this subdirectory to this function, and writing the RO crate to this output directory.  
+    """
+    crate.add_directory(output_image_dir, properties = {"name":"converted_images"})
+
+def extend_as_runcrate(crate:BcWorkflowCrate, image_output_dir:str|Path, input_directory:Optional[str|Path] = None) -> BcWorkflowCrate:
+    """
+    Add entries to a BatchConvert Workflow Crate, following a conversion with BatchConvert.  
+    Returns a Workflow Run Crate documenting the conversion and the resutling dataset.  
+    Before calling this function, best is to move the images from the output directory of batchconvert to a new subdirectory e.g "images". 
+    Then passing this subdirectory to this function, and writing the RO crate to the parent output directory.   
+    """
+    add_output_dataset(crate, output_image_dir = image_output_dir)
+    return crate
+
+def move_content_to_subdir(base_directory:str, subdirectory_name = "converted_images") -> Path:
+    """
+    Move all the content of a directory to a subdirectory, create it if not existing.  
+    Return the path to the subdirectory.
+    """
+    dest_dir_path = Path(base_directory)
+    
+    subdir = dest_dir_path.joinpath(subdirectory_name)
+
+    # Create the directory otherwise create a weird image file and the files are lost
+    if not subdir.exists():
+        subdir.mkdir()
+    
+    for file in dest_dir_path.iterdir():
+        shutil.move(file, subdir)
+    
+    return subdir
+
+def write_workflow_run_crate(batch_convert_repo_dir:str, dest_dir:str, src_dir:Optional[str] = None) :
+    """
+    After converting a dataset with batch_convert, call this function to turn the dest_dir into a Workflow Run ROCrate.  
+    This function will actually move the converted images to a subdirectory "images" in the dest_dir.  
+    It also copies the files batchconvert, batchconvert.sh, pff2ometiff.nf, pff2omezarr.nf to the RO crate too.    
+    A ro-crate-metadata.json is written in dest_dir, which in effect makes the directory a RO_crate.  
+    TODO add the rest of the files needed for execution
+    
+    batch_convert_repo_dir
+    ---------------------
+    path to the root directoy of batchconvert where the batchconvert utility and nextflow files are (e.g pff2ometiff.nf)  
+
+    dest_dir
+    --------
+    original destination directory for the converted images, as passed to batch convert.  
+    The images will be moved to a subdirectory "images" within this directory.  
+
+    src_dir
+    -------
+    directory of the original images to convert
+    """
+    crate = create_workflow_crate(batch_convert_repo_dir)
+    
+    # Move the images to a subdirectory "images"
+    #shutil.move(dest_dir, os.path.join(dest_dir, "images")) # error cannot move a directory in itself
+    image_dir = move_content_to_subdir(dest_dir, subdirectory_name = "converted_images")
+
+    extend_as_runcrate(crate,
+                       image_output_dir = image_dir,  # type: ignore
+                       )
+    
+    crate.write(dest_dir)
