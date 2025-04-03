@@ -2,4 +2,5 @@
 
 SCRIPTPATH=$( dirname -- ${BASH_SOURCE[0]}; );
 
+# Call batchconvert.sh passing all arguments
 batchconvert.sh "$@"

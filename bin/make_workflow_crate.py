@@ -205,7 +205,7 @@ def move_content_to_subdir(base_directory:str, subdirectory_name = "converted_im
 
     # Create the directory otherwise create a weird image file and the files are lost
     if not subdir.exists():
-        subdir.mkdir()
+        subdir.mkdir(parents = True) # recursive i.e create parents if needed
     
     for file in dest_dir_path.iterdir():
         shutil.move(file, subdir)
@@ -238,7 +238,7 @@ def write_workflow_run_crate(batch_convert_repo_dir:str, dest_dir:str, src_dir:O
     # Move the images to a subdirectory "images"
     #shutil.move(dest_dir, os.path.join(dest_dir, "images")) # error cannot move a directory in itself
     image_dir = move_content_to_subdir(dest_dir, subdirectory_name = "converted_images")
-
+        
     extend_as_runcrate(crate,
                        image_output_dir = image_dir,  # type: ignore
                        )
