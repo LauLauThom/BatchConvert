@@ -14,11 +14,6 @@ from rocrate.model.person import Person
 from rocrate.model.contextentity import ContextEntity
 from typing import Literal, Optional, cast
 
-from typing import NewType
-
-BcWorkflowCrate = NewType("BcWorkflowCrate", ROCrate)
-"""A pseudo custom type for BatchConvert workflow crate, just to facilitate type checking."""
-
 class BatchConvertWorkflowRunCrate(ROCrate):
     """Custom class for the BatchConvertWorkflowRunCrate, adding convenience functions."""
     
@@ -160,12 +155,12 @@ class BatchConvertWorkflowRunCrate(ROCrate):
         The caller should then associate the returned FormalParameter entity to the workflow of interest. 
         """
         properties = {"@type": "FormalParameter",
-                    "additionalType" : additionalType,
-                    "valueRequired" : valueRequired,
-                    "conformsTo": {
+                      "additionalType" : additionalType,
+                      "valueRequired" : valueRequired,
+                      "conformsTo": {
                                 "@id": "https://bioschemas.org/profiles/FormalParameter/1.0-RELEASE"
                                 },
-                    "name" : name
+                      "name" : name
                     }
         
         if description:
@@ -177,6 +172,14 @@ class BatchConvertWorkflowRunCrate(ROCrate):
         return cast(ContextEntity, self.add(ContextEntity(self, 
                                                           identifier = id if id.startswith("#") else f"#{id}",
                                                           properties = properties)))
+    def add_output_dataset(self, output_image_dir : str|Path):
+        """
+        Add a dataset entry to the RO crate with the converted images.
+        Before calling this function, best is to move the images from the output directory of batchconvert to a new subdirectory e.g "images".  
+        Then passing this subdirectory to this function, and writing the RO crate to this output directory.  
+        """
+        self.add_directory(output_image_dir, properties = {"name":"converted_images"})
+
 
 def create_workflow_crate(repo_root_dir:str) -> BatchConvertWorkflowRunCrate:
     """
@@ -197,22 +200,14 @@ def create_workflow_crate(repo_root_dir:str) -> BatchConvertWorkflowRunCrate:
     """
     return BatchConvertWorkflowRunCrate(repo_root_dir)
 
-def add_output_dataset(crate: ROCrate, output_image_dir : str|Path):
-    """
-    Add a dataset entry to the RO crate with the converted images.
-    Before calling this function, best is to move the images from the output directory of batchconvert to a new subdirectory e.g "images".  
-    Then passing this subdirectory to this function, and writing the RO crate to this output directory.  
-    """
-    crate.add_directory(output_image_dir, properties = {"name":"converted_images"})
-
-def extend_as_runcrate(crate:BcWorkflowCrate, image_output_dir:str|Path, input_directory:Optional[str|Path] = None) -> BcWorkflowCrate:
+def extend_as_runcrate(crate:BatchConvertWorkflowRunCrate, image_output_dir:str|Path, input_directory:Optional[str|Path] = None) -> BatchConvertWorkflowRunCrate:
     """
     Add entries to a BatchConvert Workflow Crate, following a conversion with BatchConvert.  
     Returns a Workflow Run Crate documenting the conversion and the resutling dataset.  
     Before calling this function, best is to move the images from the output directory of batchconvert to a new subdirectory e.g "images". 
     Then passing this subdirectory to this function, and writing the RO crate to the parent output directory.   
     """
-    add_output_dataset(crate, output_image_dir = image_output_dir)
+    crate.add_output_dataset(output_image_dir = image_output_dir)
     return crate
 
 def move_content_to_subdir(base_directory:str, subdirectory_name = "converted_images") -> Path:
