@@ -120,6 +120,29 @@ class BatchConvertWorkflowRunCrate(ROCrate):
         """
         self.root_dataset["author"] = [author]
 
+        # Create or get the creative work nodes, for the conformsTo at the dataset level (not the ones of the ro-crate-metdata.json entity)
+        wf_crate_profile = self.get("https://w3id.org/workflowhub/workflow-ro-crate/1.0")
+
+        if wf_crate_profile is None :
+             wf_crate_profile = self.add_jsonld({"@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0",
+                                                 "@type": "CreativeWork",
+                                                 "name": "Workflow RO-Crate",
+                                                 "version": "1.0"
+                                                })
+
+        process_profile = self.add_jsonld({ "@id": "https://w3id.org/ro/wfrun/process/0.1",
+                                            "@type": "CreativeWork",
+                                            "name": "Process Run Crate",
+                                            "version": "0.1"})
+
+        wfrun_profile = self.add_jsonld({"@id": "https://w3id.org/ro/wfrun/workflow/0.1",
+                                         "@type": "CreativeWork",
+                                         "name": "Workflow Run Crate",
+                                         "version": "0.1"
+                                         })
+        
+        self.root_dataset["conformsTo"] = [process_profile, wfrun_profile, wf_crate_profile]
+
         # Save the crate in a new subdirectory, all files and directories listed in the json will get copied to the subdirectory
         #crate.write(rocrate_name) # write and write_crate are the same
         #crate.write_crate("my_crate")
