@@ -37,6 +37,7 @@ s3_params = ["S3REMOTE", "S3ENDPOINT", "S3ACCESS", "S3SECRET", "S3BUCKET"]
 bia_params = ["BIA_REMOTE"]
 slurm_params = ["queue_size", "submit_rate_limit", "cluster_options", "time"]
 
+
 if __name__ == "__main__":
     scratchpath = os.environ.get('SCRATCHPATH')
     homepath = os.environ.get('HOMEPATH')
@@ -58,11 +59,20 @@ if __name__ == "__main__":
         if (sys.argv[1] == "--help") | (sys.argv[1] == "-h"):
             with open(os.path.join(temppath, '.process'), 'w') as writer:
                 writer.write('help_provided')
+    
+    # Read params.json.default, for default parameter values
     with open(defparamfile, 'r+') as f:
         jsonfileparams = json.load(f)
     defparams = dict(jsonfileparams)
     defkeys = defparams.keys()
     getdef = lambda key, default: defparams[key] if key in defkeys else default
+
+    def add_prov_option(parser : argparse.ArgumentParser):
+        """TODO this function could add all common conversion parameters and be used by both the ometiff and omezarr parser."""
+        parser.add_argument("--prov", 
+                            default = getdef('prov', False), 
+                            action = 'store_true',
+                            help = "To create a Workflow Run RO Crate with the converted data, input parameter values and script files.")
 
     parser = argparse.ArgumentParser()
     #####################################################################################################
@@ -79,6 +89,8 @@ if __name__ == "__main__":
     configure_s3_remote.add_argument('--bucket', default=None)
     configure_bia_remote = subparsers.add_parser('configure_bia_remote')
     configure_bia_remote.add_argument('--secret_dir', default=None)
+    
+    # configure ometiff options
     configure_ometiff = subparsers.add_parser('configure_ometiff')
     configure_ometiff.add_argument('--noflat', default = None)
     configure_ometiff.add_argument('--series', default = None)
@@ -91,6 +103,8 @@ if __name__ == "__main__":
     configure_ometiff.add_argument('--compression_tiff', default = None)
     configure_ometiff.add_argument('--resolutions_tiff', default = None)
     configure_ometiff.add_argument('--resolution_scale', default = None)
+    
+    # Configure omezarr options
     configure_omezarr = subparsers.add_parser('configure_omezarr')
     configure_omezarr.add_argument('--min_xy_size', default = None)
     configure_omezarr.add_argument('--resolutions_zarr', default = None)
@@ -104,6 +118,8 @@ if __name__ == "__main__":
     configure_omezarr.add_argument('--drop_series', default = None)
     configure_omezarr.add_argument('--dimension_order', default = None)
     configure_omezarr.add_argument('--overwrite', default = None)
+    
+    # Configure slurm options
     configure_slurm = subparsers.add_parser('configure_slurm')
     configure_slurm.add_argument('--queue_size', default = None)
     configure_slurm.add_argument('--submit_rate_limit', default = None)
@@ -117,6 +133,8 @@ if __name__ == "__main__":
     #####################################################################################################
     ##################################### CONVERSION SUBPARSERS #########################################
     #####################################################################################################
+    
+    
     ometiff = subparsers.add_parser('ometiff')
     ### add io parameters - obligatory
     ometiff.add_argument('in_path', default=getdef('in_path', "placehold"))  # you can update existing arguments with those from json file
@@ -129,7 +147,7 @@ if __name__ == "__main__":
     ### add work directory path
     ometiff.add_argument('--keep_workdir', default = getdef('keep_workdir', False), action = 'store_true')
 
-    ### TODO add the --prov flag here
+    add_prov_option(ometiff)
 
     ### add patterns to filter input
     ometiff.add_argument('--pattern', '-p', default=getdef('pattern', ""), type=str)
@@ -192,6 +210,7 @@ if __name__ == "__main__":
     ometiff.add_argument('--cluster_options', default = getdef('cluster_options', '--mem-per-cpu=3140 --cpus-per-task=16'))
     ometiff.add_argument('--time', default = getdef('time', '6h'))
 
+    # Conversion omezarr
     omezarr = subparsers.add_parser('omezarr')
     omezarr.add_argument('in_path', default=getdef('in_path',
                                                    "placehold"))  # you can update existing arguments with those from json file
@@ -203,6 +222,9 @@ if __name__ == "__main__":
 
     ### add work directory path
     omezarr.add_argument('--keep_workdir', default = getdef('keep_workdir', False), action = 'store_true')
+
+    ### add provenance for workflow run crate creation
+    add_prov_option(omezarr)
 
     ### add patterns to filter input
     omezarr.add_argument('--pattern', '-p', default=getdef('pattern', ""), type=str)
@@ -479,7 +501,7 @@ if __name__ == "__main__":
             f.truncate()
             with open(os.path.join(temppath, '.process'), 'w') as writer:
                 writer.write('default_param_set')
-    elif (prompt == 'ometiff') | (prompt == 'omezarr'):
+    elif (prompt == 'ometiff') | (prompt == 'omezarr'): # conversion
         # print(keys)
         # print(args.__dict__.keys())
         # print(len(args.workdir))
@@ -521,32 +543,36 @@ if __name__ == "__main__":
             if args.root_column in ("None", None, '', ""):
                 args.__dict__['root_column'] = "null"
             assert len(args.input_column) > 0, 'The csv file must contain at least one input_column.'
+        
         os.chdir(scriptpath)
-        if args.keep_workdir == True:
+        
+        if args.keep_workdir:
             with open(os.path.join(temppath, '.afterrun'), 'w') as writer:
                 writer.write('noclean')
         else:
             with open(os.path.join(temppath, '.afterrun'), 'w') as writer:
                 writer.write('clean')
+        
         #print(args)
+        # Call edit_params_file.py for each cmd line args
         cmdroot = ["python", "./edit_params_file.py".format(scriptpath), "-f", paramfile, "-df", defparamfile]
         cmd = []
         idx = 0
         # print(args)
         for key, value in args.__dict__.items():
             # print((key, value))
-            if str(value) == str("None"):
+            if str(value) == "None" or value is None:
                 pass
-            elif value is None:
-                pass
-            elif value is False:
-                if key in ["use_local_scratch", "merge_files"]:
+            
+            elif not value :
+                if key in ["use_local_scratch", "merge_files"]: # somehow for those 2 when they are false they also need to be in params.json
                     cmd.append(cmdroot + ["--key", key, "--value", "%s" % value])
                 else:
                     pass
                     # print((key, value))
             else:
                 cmd.append(cmdroot + ["--key", key, "--value", "%s" % value])
+            
             if prompt == 'ometiff':
                 # print(key)
                 if idx == 0:
@@ -554,12 +580,14 @@ if __name__ == "__main__":
                     for bf2raw_key in bf2raw_params:
                         # print("bf2raw param: %s" % key)
                         cmd.append(cmdroot + ["--key", bf2raw_key, "--deletekey", "true"])
+            
             elif prompt == 'omezarr':
                 if idx == 0:
                     cmd.append(cmdroot + ["--key", 'output_type', "--value", "omezarr"])
                     for bftools_key in bftools_params:
                         # print("bftools param: %s" % key)
                         cmd.append(cmdroot + ["--key", bftools_key, "--deletekey", "true"])
+            
             if all([(args.dest_type == "local"), (args.source_type == "local")]):  # if destination is local, don't even add the s3 parameters
                 # print("locality param: %s" % key)
                 if key.startswith('S3'):
@@ -584,18 +612,23 @@ if __name__ == "__main__":
         if os.path.exists(paramfile):
             os.remove(paramfile)
         for item in cmd:
+            #print(f"Calling {item}")
             subprocess.run(item)
+        
         with open(os.path.join(temppath,  '.process'), 'w') as writer:
-            writer.write('converted')
+            writer.write('converted') # write converted to .process
         #sys.stdout.write('converted') ### VERY IMPORTANT STEP
+        
         if args.__dict__['source_type'] == 'local':
             if not "*" in args.__dict__['in_path'] and not os.path.exists(args.__dict__['in_path']):
                 # raise ValueError('The requested path does not locally exist: %s' % args.__dict__['in_path'])
                 print('inputpatherror')
+    
     elif (prompt == 'reset_defaults'):
         shutil.copy(backupparamfile, defparamfile)
         with open(os.path.join(temppath,  '.process'), 'w') as writer:
             writer.write('resetted')
+    
     elif (prompt == 'show_default_params'):
         with open(defparamfile, 'r+') as jsonfile:
             paramdict = json.load(jsonfile)
@@ -603,6 +636,7 @@ if __name__ == "__main__":
             pp.pprint(paramdict)
             with open(os.path.join(temppath, '.process'), 'w') as writer:
                 writer.write('parameters_shown')
+    
     elif (prompt == 'export_default_params'):
         default_params = defparamfile
         dest_path_abs = os.path.join(relpath, args.dest_path)
@@ -622,3 +656,5 @@ if __name__ == "__main__":
     # print(cmd_binpath)
     subprocess.run(cmd_binpath)
     ### binpath added ###
+
+    # After this script, the file .process

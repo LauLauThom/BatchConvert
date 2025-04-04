@@ -7,8 +7,9 @@ SCRIPTPATH=$( dirname -- ${BASH_SOURCE[0]}; );
 source $SCRIPTPATH/bin/utils.sh
 mkdir -p $HOMEPATH
 
+## STEP 1 : create the params.json from the command input
 set -f && \
-python $SCRIPTPATH/bin/parameterise_conversion.py "$@";
+python $SCRIPTPATH/bin/parameterise_conversion.py "$@"; # the output of this script is a .process file with the name of the command to call, and the param.json with the actual parameters
 
 if [[ -f $TEMPPATH/.stderr ]];
   then
@@ -29,6 +30,9 @@ if [[ -f $TEMPPATH/.stdout ]];
     rm $TEMPPATH/.stdout;
 fi;
 
+
+## STEP 2 : read the .process file, which contains a "command name"
+## The command name "converted" is the one triggering the conversion ("convert" would have probably been a better name, since it didnt happen yet)
 if [[ -f $TEMPPATH/.process ]];
   then
     process=$(cat $TEMPPATH/.process)
@@ -57,6 +61,7 @@ if [[ -f $TEMPPATH/.afterrun ]];
   else
     afterrun="nan"
 fi
+
 
 if [[ $process == 'configured_s3' ]];
   then
@@ -92,9 +97,10 @@ elif [[ $process == 'converted' ]];
   then
     printf "${GREEN}Nextflow script has been created. Workflow is beginning.\n${NORMAL}" && \
     chmod +x $BINPATH/run_conversion.py && \
-    python $SCRIPTPATH/bin/run_nextflow_cli.py # where the nextflow workflow are actually started
+    python $SCRIPTPATH/bin/run_nextflow_cli.py # where the nextflow workflows are actually started. The file run_conversion.py is made executable, and is called from within the nextflow wflows
 fi
 
+# delete the .process file
 if [[ -f $TEMPPATH/.process ]];
   then
     rm $TEMPPATH/.process
