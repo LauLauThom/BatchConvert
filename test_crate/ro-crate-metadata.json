@@ -9,7 +9,18 @@
                     "@id": "https://orcid.org/0000-0001-9823-0581"
                 }
             ],
-            "datePublished": "2025-04-03T12:10:35+00:00",
+            "conformsTo": [
+                {
+                    "@id": "https://w3id.org/ro/wfrun/process/0.1"
+                },
+                {
+                    "@id": "https://w3id.org/ro/wfrun/workflow/0.1"
+                },
+                {
+                    "@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0"
+                }
+            ],
+            "datePublished": "2025-04-04T14:13:58+00:00",
             "hasPart": [
                 {
                     "@id": "batchconvert"
@@ -71,6 +82,12 @@
                     "@id": "#conversion_format"
                 },
                 {
+                    "@id": "#src_dir"
+                },
+                {
+                    "@id": "#dest_dir"
+                },
+                {
                     "@id": "#merge_files"
                 },
                 {
@@ -97,13 +114,35 @@
             "valueRequired": true
         },
         {
+            "@id": "#src_dir",
+            "@type": "FormalParameter",
+            "additionalType": "Text",
+            "conformsTo": {
+                "@id": "https://bioschemas.org/profiles/FormalParameter/1.0-RELEASE"
+            },
+            "description": "Input directory with images to convert.",
+            "name": "src_dir",
+            "valueRequired": true
+        },
+        {
+            "@id": "#dest_dir",
+            "@type": "FormalParameter",
+            "additionalType": "Text",
+            "conformsTo": {
+                "@id": "https://bioschemas.org/profiles/FormalParameter/1.0-RELEASE"
+            },
+            "description": "Output directory with converted images.",
+            "name": "dest_dir",
+            "valueRequired": true
+        },
+        {
             "@id": "#merge_files",
             "@type": "FormalParameter",
             "additionalType": "Boolean",
             "conformsTo": {
                 "@id": "https://bioschemas.org/profiles/FormalParameter/1.0-RELEASE"
             },
-            "description": "If multiple source files should be concatenated into a single ome-tiff/ome-zarr. Can be used together with the concatenation_order parameter to instruct the dimensions, otherwise batchconvert will automatically group datasets (see the doc).",
+            "description": "Flag --merge_files, if multiple source files should be concatenated into a single ome-tiff/ome-zarr. Can be used together with the concatenation_order parameter to instruct the dimensions, otherwise batchconvert will automatically group datasets (see the doc).",
             "name": "merge_files",
             "valueRequired": false
         },
@@ -160,6 +199,24 @@
             "@id": "https://orcid.org/0000-0001-9823-0581",
             "@type": "Person",
             "name": "Bugra \u00d6zdemir"
+        },
+        {
+            "@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0",
+            "@type": "CreativeWork",
+            "name": "Workflow RO-Crate",
+            "version": "1.0"
+        },
+        {
+            "@id": "https://w3id.org/ro/wfrun/process/0.1",
+            "@type": "CreativeWork",
+            "name": "Process Run Crate",
+            "version": "0.1"
+        },
+        {
+            "@id": "https://w3id.org/ro/wfrun/workflow/0.1",
+            "@type": "CreativeWork",
+            "name": "Workflow Run Crate",
+            "version": "0.1"
         }
     ]
 }

@@ -101,6 +101,7 @@ if __name__ == '__main__':
     # Create a run crate if the flag is set
     if args.prov:
         crate = make_workflow_crate.write_workflow_run_crate(batch_convert_repo_dir = batchconvert_root_dir,
+                                                             param_dir = parampath, # type: ignore
                                                              src_dir = args.in_path,
                                                              dest_dir = args.out_path)
 

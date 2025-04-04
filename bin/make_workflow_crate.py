@@ -3,7 +3,7 @@ Module to create a WF (run) crate for a run of the BatchConvert tool i.e a conve
 """
 import os
 from pathlib import Path
-import shutil
+import shutil, json
 import rocrate
 #print(rocrate.__path__)
 
@@ -12,7 +12,10 @@ from rocrate.model   import ComputerLanguage
 from rocrate.model.entity import Entity
 from rocrate.model.person import Person
 from rocrate.model.contextentity import ContextEntity
-from typing import Literal, Optional, cast
+from typing import Any, Literal, Optional, cast
+
+get_identifier = lambda id : id if id.startswith("#") else f"#{id}"
+"""Get a ROCrate compliant identifier for a given string, i.e should start with #"""
 
 class BatchConvertWorkflowRunCrate(ROCrate):
     """Custom class for the BatchConvertWorkflowRunCrate, adding convenience functions."""
@@ -31,10 +34,10 @@ class BatchConvertWorkflowRunCrate(ROCrate):
         self.add(bash) # need to add the item first then reference it
 
         # the wf file will be copied from the source, to the directory where the crate will be saved (using crate.write)
-        main_wf = cast(Entity, self.add_workflow(source = os.path.join(repo_root_dir, "batchconvert"), 
-                                                main=True, 
-                                                lang = bash))  # type: ignore
-
+        self.main_wf = cast(Entity, self.add_workflow(source = os.path.join(repo_root_dir, "batchconvert"), 
+                                                      main=True, 
+                                                      lang = bash))  # type: ignore
+        """
         # Create input parameters
         param_format = self.addFormalParameter(id = "#conversion_format",
                                                additionalType = "Text",
@@ -69,11 +72,12 @@ class BatchConvertWorkflowRunCrate(ROCrate):
                                                             defaultValue = "auto",
                                                             description = "Can be used with the --merge_files flag to pass custom dimensions specifiers.")
                         
-        main_wf["input"] = [param_format, 
+        self.main_wf["input"] = [param_format, 
                             param_src_dir,
                             param_dst_dir,
                             param_merge_files, 
                             param_concatenation_order]
+        """
 
         # Adding the subworkflows has part of the WF crate
         # For a run, one could omit the one not used, or only mention the one used via a createAction
@@ -91,8 +95,8 @@ class BatchConvertWorkflowRunCrate(ROCrate):
         workflow_tiff["description"] = desc_template.format("ometiff") # type: ignore
         workflow_zarr["description"] = desc_template.format("omezarr") # type: ignore
 
-        main_wf["hasPart"] = [workflow_tiff, workflow_zarr]  # type: ignore
-        main_wf["url"]     = ["https://github.com/Euro-BioImaging/BatchConvert"]
+        self.main_wf["hasPart"] = [workflow_tiff, workflow_zarr]  # type: ignore
+        self.main_wf["url"]     = ["https://github.com/Euro-BioImaging/BatchConvert"]
 
         # Add the authors and institution potentially
         # works but not added as author of the workflow
@@ -170,8 +174,81 @@ class BatchConvertWorkflowRunCrate(ROCrate):
             properties["defaultValue"] = defaultValue
 
         return cast(ContextEntity, self.add(ContextEntity(self, 
-                                                          identifier = id if id.startswith("#") else f"#{id}",
+                                                          identifier = get_identifier(id),
                                                           properties = properties)))
+    
+    def add_PropertyValue(self, value, param_entity : ContextEntity) -> ContextEntity:
+        """
+        Create a PropertyValue entity with the value taken by a paran_entity during a run.
+        The PropertyValue will have the same id than the param entity with suffix "/value".  
+        The field name is however the same than the FormalParameter.  
+        """
+        properties = {"@type" : "PropertyValue",
+                      "name"  : param_entity["name"],
+                      "value" : value
+                      }
+                    
+        propertyValueEntity = cast(ContextEntity, self.add(ContextEntity(self,
+                                                                        identifier = f"{param_entity.id}/value",
+                                                                        properties = properties)))
+        propertyValueEntity["exampleOfWork"] = param_entity
+
+        return propertyValueEntity
+    
+    def add_input_and_value_entities(self, input_key : str, input_value) :
+        """
+        Create a FormalParameter and associated value entity for a pair of input:value.  
+        """
+        # mapping python type to the rocrate equivalent
+        pytype_to_rotype = {int:"Integer", 
+                            str:"Text",
+                            bool:"Boolean",
+                            }
+        try:
+            formal_parameter_type = pytype_to_rotype[type(input_value)]
+        except KeyError:
+            raise TypeError("input_value should be an int, str or bool.")
+
+        param_entity = self.addFormalParameter(id = input_key,
+                                               additionalType = formal_parameter_type, # type: ignore
+                                               name = input_key,
+                                               valueRequired = input_key in ("in_path", "out_path"),
+                                               )
+        self.main_wf.append_to("input", param_entity)
+        
+        _ = self.add_PropertyValue(input_value, param_entity=param_entity)
+
+    def find_and_add_custom_param_values(self, param_dir_path:str):
+        """
+        After a run of BatchConvert, parse the file params.json and params.json.default normally in home/.batchConvert/params, to find out which parameters differ from the default, i.e were passed to the batchconvert command line utils.  
+        It's true that some extra parameters can have been passed to the command line, with the same value than in the params.json.default, but in this case the result is the same than omitting them.  
+        There is not much simpler way to recover these "custom" values, having always a consistent parameter naming.  
+        """
+
+        # first actual parameters used
+        with open(os.path.join(param_dir_path, "params.json")) as param_file:
+            params : dict[str, Any] = json.load(param_file)
+
+        # then default parameters
+        with open(os.path.join(param_dir_path, "params.json.default")) as default_param_file:
+            default_params : dict[str, Any] = json.load(default_param_file)
+
+        # Loop over the entries of the param dict, checking if differing from default
+        for key, value in params.items():
+            
+            if key in default_params:
+                
+                default_value = default_params[key]
+                
+                if value != default_value:
+                    self.add_input_and_value_entities(input_key = key,
+                                                      input_value = value)
+                #else value is default, nothing to do
+            
+            else : # if the key is not even in the default parameters then also add it
+                self.add_input_and_value_entities(input_key = key,
+                                                  input_value = value)
+    
     def add_output_dataset(self, output_image_dir : str|Path):
         """
         Add a dataset entry to the RO crate with the converted images.
@@ -228,7 +305,7 @@ def move_content_to_subdir(base_directory:str, subdirectory_name = "converted_im
     
     return subdir
 
-def write_workflow_run_crate(batch_convert_repo_dir:str, dest_dir:str, src_dir:Optional[str] = None) :
+def write_workflow_run_crate(batch_convert_repo_dir:str, dest_dir:str, param_dir:str, src_dir:Optional[str] = None) :
     """
     After converting a dataset with batch_convert, call this function to turn the dest_dir into a Workflow Run ROCrate.  
     This function will actually move the converted images to a subdirectory "images" in the dest_dir.  
@@ -251,6 +328,7 @@ def write_workflow_run_crate(batch_convert_repo_dir:str, dest_dir:str, src_dir:O
     """
     crate = create_workflow_crate(batch_convert_repo_dir)
     
+    crate.find_and_add_custom_param_values(param_dir_path = param_dir)
     # Move the images to a subdirectory "images"
     #shutil.move(dest_dir, os.path.join(dest_dir, "images")) # error cannot move a directory in itself
     image_dir = move_content_to_subdir(dest_dir, subdirectory_name = "converted_images")
