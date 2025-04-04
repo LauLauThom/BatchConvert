@@ -72,11 +72,13 @@ if __name__ == '__main__':
     # Command to call the nextflow conversion workflow
     conversion_command = ["nextflow", "-C", configfile, "-log", logdir, "run"]
 
+    batchconvert_root_dir = os.path.dirname(scriptpath)
+
     if args.output_type == 'ometiff':
-        conversion_command.append(f"{scriptpath}/../pff2ometiff.nf")
+        conversion_command.append(os.path.join(batchconvert_root_dir, "pff2ometiff.nf"))
     
     elif args.output_type == 'omezarr':
-        conversion_command.append(f"{scriptpath}/../pff2omezarr.nf")
+        conversion_command.append(os.path.join(batchconvert_root_dir, "pff2omezarr.nf"))
     
     # add file with parameter values and the execution profile
     conversion_command += [f"-params-file", paramfile, "-profile", args.profile]
@@ -97,23 +99,13 @@ if __name__ == '__main__':
     os.chdir(curpath)
 
     # Create a run crate if the flag is set
-    make_run_crate = True
-    if make_run_crate:
-        
-        main_dir = "" # TODO add main directory, should be repos root
-        crate = make_workflow_crate.create_workflow_crate(main_dir)
+    if args.prov:
+        crate = make_workflow_crate.write_workflow_run_crate(batch_convert_repo_dir = batchconvert_root_dir,
+                                                             src_dir = args.in_path,
+                                                             dest_dir = args.out_path)
 
-        if args.output_type == "ometiff":
-            conversion_wf_name = "pff2ometiff.nf"
-        
-        elif args.output_type == "omezarr":
-            conversion_wf_name = "pff2omezarr.nf" 
-
-        else:
-            raise NotImplementedError()
-        
         # get the conversion wf entity to be able to reference it
-        conversion_wf_entity = crate.get(conversion_wf_name)
+        #conversion_wf_entity = crate.get(conversion_wf_name)
         
 
 
