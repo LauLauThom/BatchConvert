@@ -1,7 +1,7 @@
 import os, json, subprocess, sys
 from subprocess import PIPE
 import shutil
-from make_workflow_crate import write_workflow_run_crate
+from wfrun_rocrate import write_workflow_run_crate
 
 if __name__ == "__main__":
     """First script called by batchconvert.sh"""
