@@ -309,12 +309,13 @@ class BatchConvertWorkflowRunCrate(ROCrate):
             
             converted_image_dir = out_dir
         
+        # any other case : the input directory is somewhere and the input dir somewhere unrelated, then move the content of the output directory to a subdirectory
+        # and use the original output directory as the crate directory
+        # TODO if the output directory contains stuff already this content also get moved to the newly created subdirectory, could bew avoided?
         else :
             self.crate_dir = out_dir
             image_dir = in_dir
             
-            # Move the converted images to a subdirectory of the original output directory
-            # the original directory will be the crate directory
             converted_image_dir = move_content_to_subdir(base_directory = out_dir,
                                                          subdirectory_name = "converted_images")
         
