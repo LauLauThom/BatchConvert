@@ -4,6 +4,7 @@ Module to create a WF (run) crate for a run of the BatchConvert tool i.e a conve
 import os
 from pathlib import Path
 import shutil, json
+import time
 import warnings
 import rocrate
 #print(rocrate.__path__)
@@ -269,30 +270,52 @@ class BatchConvertWorkflowRunCrate(ROCrate):
 
         # Create a variable for the input/output directory 
         # used later on when saving the crate
-        self.in_dir  = Path(params["in_path"]) 
-        self.out_dir = Path(params["out_path"])
+        in_dir  = Path(params["in_path"]) 
+        out_dir = Path(params["out_path"])
 
-        # Check if the output dir is a subdirectory of the input directory, then the crate directory will be the input directory
-        # otherwise the crate directory will be the output directory
+        # Handle the different cases of input/output directory structure
+        # because the rpyrocrate package copy the directory referenced in the json, unless they are already in the right place
+        # so to avoid duplication we move the data already in the right place
+
+        # Case 1 : input and output are in the same directory
+        # then move them to a subdirectory and use the newly created parent as the crate
         # "least astonishment principle" 
-        if self.out_dir.is_relative_to(self.in_dir):
-            self.crate_dir = self.in_dir 
+        if in_dir.parent == out_dir.parent:
+            
+            parent = in_dir.parent
+
+            self.crate_dir = parent.joinpath(f"batchconvert_wfrun_rocrate_{time.strftime('%Y_%m_%d_%H%M')}")
+            self.crate_dir.mkdir()
+
+            # Move the input and output dir to the crate dir
+            image_dir = self.crate_dir.joinpath(in_dir.name)
+            shutil.move(in_dir, image_dir) # in dir is the original input directory, its content is then moved to crate/in_dir
+
+            converted_image_dir = self.crate_dir.joinpath(out_dir.name)
+            shutil.move(out_dir, converted_image_dir)
+
+        # if the output dir is a subdirectory of the input directory
+        # then move the images to a subdirectory of the original input dir 
+        # and use the original input dir as the crate
+        elif out_dir.is_relative_to(in_dir):
+            
+            self.crate_dir = in_dir 
             
             # Move the original images to a subdirectory of the input directory
             # Dont move the subdirectyory of the converted images though
-            image_dir = move_content_to_subdir(base_directory = self.in_dir,
+            image_dir = move_content_to_subdir(base_directory = in_dir,
                                                subdirectory_name = "images",
-                                               exclude = [self.out_dir])
+                                               exclude = [out_dir])
             
-            converted_image_dir = self.out_dir
+            converted_image_dir = out_dir
         
         else :
-            self.crate_dir = self.out_dir
-            image_dir = self.in_dir
+            self.crate_dir = out_dir
+            image_dir = in_dir
             
             # Move the converted images to a subdirectory of the original output directory
             # the original directory will be the crate directory
-            converted_image_dir = move_content_to_subdir(base_directory = self.out_dir,
+            converted_image_dir = move_content_to_subdir(base_directory = out_dir,
                                                          subdirectory_name = "converted_images")
         
         # Add input directory as datasets
@@ -391,5 +414,4 @@ def write_workflow_run_crate(batch_convert_repo_dir:str, param_dir:str) :
     crate = BatchConvertWorkflowRunCrate(batch_convert_repo_dir, 
                                          param_dir = param_dir)
     
-    crate._parse_params()
     crate.save_crate()
