@@ -36,12 +36,39 @@ def load_params_json(path:str) -> Dict[str, Any]:
 class BatchConvertWorkflowRunCrate(ROCrate):
     """Custom class for the BatchConvertWorkflowRunCrate, adding convenience functions."""
     
-    def __init__(self, repo_root_dir : str, param_dir:str):
-        """Create a workflow crate for BatchConvert, call add_input... to add additional infos about a run."""
+    def __init__(self, repo_root_dir : str, param_dir:str, name="", description = "", license = ""):
+        """
+        Create a workflow run crate after conversion of an image dataset with BatchConvert.  
+        TODO rework to only move the files once the crate is written !!
+        TODO dont extend the ROcrate, rather use composition to prevent saving to any place ?
+        
+        repo_root_dir
+        -------------
+        Where the BatchConvert script files are.
+
+        param_dir
+        --------
+        Directory of the params.json file, typically home/.batchconvert/params
+
+        name
+        ----
+        Name of the crate  
+        Use for the attribute "name" of the root dataset of the crate  
+        A default name is created if not provided.
+
+        description
+        -----------
+        Optional description for the crate.
+        By default will be "Conversion of dataset {name} to format {format}" where name is the name of the source directory passed to BatchConvert, and format is the conversion format (ometiff or omezarr).
+        """
         
         super().__init__()
-
+        
         self.param_dir = param_dir
+
+        # Declare varaibles that should be populated by _parseParams if the params.json file exists in param_dir
+        self._conversion_format : Optional[str] # conversion format
+        self._src_dir : Optional[str]
 
         # crate.add_workflow("batchconvert", main=True, lang = "shell") # throws an error, currently lang has to be one of "cwl", "galaxy", "knime", "nextflow", "snakemake", "compss", "autosubmit"
         # However one can also pass a ComputerLanguage object to lang, see https://github.com/ResearchObject/ro-crate-py/issues/218#issuecomment-2753694857
@@ -136,7 +163,7 @@ class BatchConvertWorkflowRunCrate(ROCrate):
         else: # for/else : hit if the for loop does not break
             raise Exception("Could not find root Dataset entity")
         """
-        self.root_dataset["author"] = [author]
+
 
         # Create or get the creative work nodes, for the conformsTo at the dataset level (not the ones of the ro-crate-metdata.json entity)
         wf_crate_profile = self.get("https://w3id.org/workflowhub/workflow-ro-crate/1.0")
@@ -159,14 +186,26 @@ class BatchConvertWorkflowRunCrate(ROCrate):
                                          "version": "0.1"
                                          })
         
+        self.root_dataset["author"] = [author]
         self.root_dataset["conformsTo"] = [process_profile, wfrun_profile, wf_crate_profile]
 
         self._parse_params()
+        
+        # Add name, description and license to root dataset, needed for a valid crate
+        if not name and self._src_dir:
+            name = f"BatchConvert wf runcrate - converted directory '{self._src_dir}'"
 
+        self.name = name
+
+        if not description and self._conversion_format and self._src_dir:
+            description = f"Worfklow run crate describing conversion of images in directory '{self._src_dir}' to format {self._conversion_format} using BatchConvert"
+        
+        self.description = description
+        self.license = license
+        
         # Save the crate in a new subdirectory, all files and directories listed in the json will get copied to the subdirectory
         #crate.write(rocrate_name) # write and write_crate are the same
         #crate.write_crate("my_crate")
-
 
 
     def addFormalParameter(self,
@@ -273,6 +312,9 @@ class BatchConvertWorkflowRunCrate(ROCrate):
         in_dir  = Path(params["in_path"]) 
         out_dir = Path(params["out_path"])
 
+        # populate the dataset name, just for the crate description
+        self._src_dir = in_dir.name
+
         # Handle the different cases of input/output directory structure
         # because the rpyrocrate package copy the directory referenced in the json, unless they are already in the right place
         # so to avoid duplication we move the data already in the right place
@@ -347,6 +389,9 @@ class BatchConvertWorkflowRunCrate(ROCrate):
 
         # Loop over the entries of the param dict, checking if differing from default
         for key, value in params.items():
+            
+            if key == "output_type":
+                self._conversion_format = cast(str, value) 
             
             if key in default_params:
                 
