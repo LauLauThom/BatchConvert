@@ -38,3 +38,4 @@ assert formalParam["valueRequired"] # directly True
 # Check that one can retrieve the formalParameter from the crate
 assert crate.get(id) == formalParam
 
+###### 

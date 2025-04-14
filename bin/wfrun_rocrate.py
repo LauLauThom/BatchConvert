@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Literal, Optional, cast
 get_identifier = lambda id : id if id.startswith("#") else f"#{id}"
 """Get a ROCrate compliant identifier for a given string, i.e should start with #"""
 
-def load_params_json(path:str) -> Dict[str, Any]:
+def load_params_json(path:str|Path) -> Dict[str, Any]:
     """Load the param json, casting the bool which were not properly encoded."""
 
     with open(path) as file:
@@ -33,14 +33,16 @@ def load_params_json(path:str) -> Dict[str, Any]:
     return content_dict
 
 
-class BatchConvertWorkflowRunCrate(ROCrate):
-    """Custom class for the BatchConvertWorkflowRunCrate, adding convenience functions."""
+class BatchConvert_RunCrateMaker(object):
+    """
+    Custom class for the BatchConvertWorkflowRunCrate, adding convenience functions.  
+    Dont directly extend a ROCrate, we dont want to give the option to save the crate anywhere, since we also need to move files around.  
+    """
     
-    def __init__(self, repo_root_dir : str, param_dir:str, name="", description = "", license = ""):
+    def __init__(self, repo_root_dir : str, param_dir:Optional[str] = None, name="", description = "", license = ""):
         """
         Create a workflow run crate after conversion of an image dataset with BatchConvert.  
-        TODO rework to only move the files once the crate is written !!
-        TODO dont extend the ROcrate, rather use composition to prevent saving to any place ?
+        This constructor only populates the default infos that do not change, but does not parse the json files with the actual parameter values.   
         
         repo_root_dir
         -------------
@@ -48,7 +50,8 @@ class BatchConvertWorkflowRunCrate(ROCrate):
 
         param_dir
         --------
-        Directory of the params.json file, typically home/.batchconvert/params
+        Directory of the params.json file.  
+        If not provided, default to home/.batchconvert/params  
 
         name
         ----
@@ -63,8 +66,13 @@ class BatchConvertWorkflowRunCrate(ROCrate):
         """
         
         super().__init__()
+        self.crate = ROCrate()
+
+        self.param_dir = Path(param_dir) if param_dir else Path.home().joinpath(".batchconvert") \
+                                                                      .joinpath("params")
         
-        self.param_dir = param_dir
+        if not self.param_dir.exists():
+            raise FileNotFoundError(self.param_dir)
 
         # Declare varaibles that should be populated by _parseParams if the params.json file exists in param_dir
         self._conversion_format : Optional[str] # conversion format
@@ -73,45 +81,45 @@ class BatchConvertWorkflowRunCrate(ROCrate):
         # crate.add_workflow("batchconvert", main=True, lang = "shell") # throws an error, currently lang has to be one of "cwl", "galaxy", "knime", "nextflow", "snakemake", "compss", "autosubmit"
         # However one can also pass a ComputerLanguage object to lang, see https://github.com/ResearchObject/ro-crate-py/issues/218#issuecomment-2753694857
         bash_url = "https://www.gnu.org/software/bash/"
-        bash = ComputerLanguage(self, identifier="#bash", properties = {"name" : "Bash",
-                                                                        "identifier": {"@id": bash_url},
-                                                                        "url": {"@id": bash_url}
-                                                                        })
-        self.add(bash) # need to add the item first then reference it
+        bash = ComputerLanguage(self.crate, identifier="#bash", properties = {"name" : "Bash",
+                                                                              "identifier": {"@id": bash_url},
+                                                                              "url": {"@id": bash_url}
+                                                                             })
+        self.crate.add(bash) # need to add the item first then reference it
 
         # the wf file will be copied from the source, to the directory where the crate will be saved (using crate.write)
-        self.main_wf = cast(Entity, self.add_workflow(source = os.path.join(repo_root_dir, "batchconvert"), 
-                                                      main=True, 
-                                                      lang = bash))  # type: ignore
+        self.main_wf = cast(Entity, self.crate.add_workflow(source = os.path.join(repo_root_dir, "batchconvert"), 
+                                                            main=True, 
+                                                            lang = bash))  # type: ignore
         """
         # Create input parameters
-        param_format = self.addFormalParameter(id = "#conversion_format",
+        param_format = self.crate.addFormalParameter(id = "#conversion_format",
                                                additionalType = "Text",
                                                name = "conversion_format",
                                                valueRequired = True,
                                                description = "Either 'ometiff' or 'omezarr'")
         
-        param_src_dir = self.addFormalParameter(id = "#src_dir",
+        param_src_dir = self.crate.addFormalParameter(id = "#src_dir",
                                                 additionalType = "Text",
                                                 name = "src_dir",
                                                 valueRequired = True,
                                                 description = "Input directory with images to convert.") 
         
-        param_dst_dir = self.addFormalParameter(id = "#dest_dir",
+        param_dst_dir = self.crate.addFormalParameter(id = "#dest_dir",
                                                 additionalType = "Text",
                                                 name = "dest_dir",
                                                 valueRequired = True,
                                                 description = "Output directory with converted images.") 
         
         
-        param_merge_files = self.addFormalParameter(id = "#merge_files",
+        param_merge_files = self.crate.addFormalParameter(id = "#merge_files",
                                                     additionalType = "Boolean",
                                                     name = "merge_files",
                                                     valueRequired = False,
                                                     defaultValue = False,
                                                     description = "Flag --merge_files, if multiple source files should be concatenated into a single ome-tiff/ome-zarr. Can be used together with the concatenation_order parameter to instruct the dimensions, otherwise batchconvert will automatically group datasets (see the doc).")
             
-        param_concatenation_order = self.addFormalParameter(id = "#concatenation_order",
+        param_concatenation_order = self.crate.addFormalParameter(id = "#concatenation_order",
                                                             additionalType = "Text",
                                                             name = "concatenation_order",
                                                             valueRequired = False,
@@ -128,13 +136,13 @@ class BatchConvertWorkflowRunCrate(ROCrate):
         # Adding the subworkflows has part of the WF crate
         # For a run, one could omit the one not used, or only mention the one used via a createAction
         # Same process, create the entities and add them to the crate (done in one go by add_workflow here), then link them to the main wf
-        workflow_tiff = self.add_workflow(source = os.path.join(repo_root_dir, "pff2omezarr.nf"),
-                                          main = False,
-                                          lang = "nextflow")
+        workflow_tiff = self.crate.add_workflow(source = os.path.join(repo_root_dir, "pff2omezarr.nf"),
+                                                main = False,
+                                                lang = "nextflow")
 
-        workflow_zarr = self.add_workflow(source = os.path.join(repo_root_dir, "pff2ometiff.nf"), 
-                                          main = False,
-                                          lang = "nextflow")
+        workflow_zarr = self.crate.add_workflow(source = os.path.join(repo_root_dir, "pff2ometiff.nf"), 
+                                                main = False,
+                                                lang = "nextflow")
 
         # Add description to the secondary workflow
         desc_template = "Nextflow workflow executed when passing the argument (i.e converting to) '{}' as first argument to the BatchConvert utility."
@@ -147,59 +155,38 @@ class BatchConvertWorkflowRunCrate(ROCrate):
         # Add the authors and institution potentially
         # works but not added as author of the workflow
         # TODO add more authors
-        author = self.add(Person(self, 
-                                identifier="https://orcid.org/0000-0001-9823-0581", 
-                                properties={"name" : "Bugra Özdemir"})) # the O with umlaut gets a unicode character code, which is OK in a UI it renders properly
+        author = self.crate.add(Person(self.crate, 
+                                       identifier="https://orcid.org/0000-0001-9823-0581", 
+                                       properties={"name" : "Bugra Özdemir"})) # the O with umlaut gets a unicode character code, which is OK in a UI it renders properly
+        self.crate.root_dataset["author"] = [author]
+
         #crate["Authors"] = author # nope
 
-        # Add the authors at the root of the dataset entity as expected by workflow hub
-        """
-        for e in crate.get_entities():
-            
-            if e.id == "./" :
-                root_dataset_entity = e
-                break
-
-        else: # for/else : hit if the for loop does not break
-            raise Exception("Could not find root Dataset entity")
-        """
-
-
         # Create or get the creative work nodes, for the conformsTo at the dataset level (not the ones of the ro-crate-metdata.json entity)
-        wf_crate_profile = self.get("https://w3id.org/workflowhub/workflow-ro-crate/1.0")
+        wf_crate_profile = self.crate.get("https://w3id.org/workflowhub/workflow-ro-crate/1.0")
 
         if wf_crate_profile is None :
-             wf_crate_profile = self.add_jsonld({"@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0",
-                                                 "@type": "CreativeWork",
-                                                 "name": "Workflow RO-Crate",
-                                                 "version": "1.0"
+             wf_crate_profile = self.crate.add_jsonld({"@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0",
+                                                        "@type": "CreativeWork",
+                                                        "name": "Workflow RO-Crate",
+                                                        "version": "1.0"
+                                                        })
+
+        process_profile = self.crate.add_jsonld({ "@id": "https://w3id.org/ro/wfrun/process/0.1",
+                                                "@type": "CreativeWork",
+                                                "name": "Process Run Crate",
+                                                "version": "0.1"})
+
+        wfrun_profile = self.crate.add_jsonld({"@id": "https://w3id.org/ro/wfrun/workflow/0.1",
+                                               "@type": "CreativeWork",
+                                               "name": "Workflow Run Crate",
+                                               "version": "0.1"
                                                 })
-
-        process_profile = self.add_jsonld({ "@id": "https://w3id.org/ro/wfrun/process/0.1",
-                                            "@type": "CreativeWork",
-                                            "name": "Process Run Crate",
-                                            "version": "0.1"})
-
-        wfrun_profile = self.add_jsonld({"@id": "https://w3id.org/ro/wfrun/workflow/0.1",
-                                         "@type": "CreativeWork",
-                                         "name": "Workflow Run Crate",
-                                         "version": "0.1"
-                                         })
         
-        self.root_dataset["author"] = [author]
-        self.root_dataset["conformsTo"] = [process_profile, wfrun_profile, wf_crate_profile]
+        self.crate.root_dataset["conformsTo"] = [process_profile, wfrun_profile, wf_crate_profile]
 
-        self._parse_params()
-        
-        # Add name, description and license to root dataset, needed for a valid crate
-        if not name and self._src_dir:
-            name = f"BatchConvert wf runcrate - converted directory '{self._src_dir}'"
-
+        # Add default name and description
         self.name = name
-
-        if not description and self._conversion_format and self._src_dir:
-            description = f"Worfklow run crate describing conversion of images in directory '{self._src_dir}' to format {self._conversion_format} using BatchConvert"
-        
         self.description = description
         self.license = license
         
@@ -235,9 +222,9 @@ class BatchConvertWorkflowRunCrate(ROCrate):
         if defaultValue:
             properties["defaultValue"] = defaultValue
 
-        return cast(ContextEntity, self.add(ContextEntity(self, 
-                                                          identifier = get_identifier(id),
-                                                          properties = properties)))
+        return cast(ContextEntity, self.crate.add(ContextEntity(self.crate, 
+                                                                identifier = get_identifier(id),
+                                                                properties = properties)))
     
     def add_PropertyValue(self, value, param_entity : ContextEntity) -> ContextEntity:
         """
@@ -250,9 +237,9 @@ class BatchConvertWorkflowRunCrate(ROCrate):
                       "value" : value
                       }
                     
-        propertyValueEntity = cast(ContextEntity, self.add(ContextEntity(self,
-                                                                        identifier = f"{param_entity.id}/value",
-                                                                        properties = properties)))
+        propertyValueEntity = cast(ContextEntity, self.crate.add(ContextEntity(self.crate,
+                                                                                identifier = f"{param_entity.id}/value",
+                                                                                properties = properties)))
         propertyValueEntity["exampleOfWork"] = param_entity
 
         return propertyValueEntity
@@ -280,25 +267,27 @@ class BatchConvertWorkflowRunCrate(ROCrate):
         
         _ = self.add_PropertyValue(input_value, param_entity=param_entity)
 
-    def _parse_params(self):
+
+    def _parse_params_and_reorganize_files(self):
         """
+        IMPORTANT : This function can also move the input and/or output directory of images to subdirectories to avoid data-duplication !  
+
         After a run of BatchConvert, add both the params.json and params.json.default to the crate normally in (home/.batchConvert/params).  
         Also parse those files to try find out which parameters differ from the default, i.e were potentially passed to the batchconvert command line utils.  
         Typically, includes the input and output directory.  
         Some parameters will be listed in the rocrate json although they were not passed to the cmd line i.e they were taking the default value, the result is however the same than omitting them.   
         There is not much simpler way to recover these "custom" values, having always a consistent parameter naming.  
         
-        This function also moves the images to a subdirectory "convert_images" of the original output directory.  
         And adds the input and output directory as Dataset in the crate.  
         """
         
         # Params.json
-        param_path = os.path.join(self.param_dir, "params.json")
+        param_path = self.param_dir.joinpath("params.json")
 
         if not os.path.exists(param_path):
             raise FileNotFoundError(param_path)
         
-        self.add_file(param_path, 
+        self.crate.add_file(param_path, 
                       dest_path="params/params.json",
                       properties = {"name":"parameters",
                                     "encodingFormat":"text/json"    
@@ -362,24 +351,24 @@ class BatchConvertWorkflowRunCrate(ROCrate):
                                                          subdirectory_name = "converted_images")
         
         # Add input directory as datasets
-        self.add_directory(source = image_dir,
+        self.crate.add_directory(source = image_dir,
                            properties = {"name": "original_image_directory",
                                         "description" : "Directory of images to convert"} ) 
         
         # Add output directory
-        self.add_directory(source = converted_image_dir,
+        self.crate.add_directory(source = converted_image_dir,
                            properties = {"name": "converted_image_directory",
                                          "description" : "Directory with converted images"} ) 
 
         # Default params        
-        default_param_path = os.path.join(self.param_dir, "params.json.default")
+        default_param_path = self.param_dir.joinpath("params.json.default")
 
         if not os.path.exists(default_param_path):
             warnings.warn(f"Could not find file {default_param_path}")
             return
         
         # Add default param file to crate
-        self.add_file(default_param_path, 
+        self.crate.add_file(default_param_path, 
                       dest_path="params/params.json.default",
                       properties = {"name":"default_parameters",
                                     "encodingFormat":"text/json"    
@@ -407,8 +396,20 @@ class BatchConvertWorkflowRunCrate(ROCrate):
                                                   input_value = value)
     
     def save_crate(self):
-        """Save the crate to the original output directory passed to the BatchConvert tool."""
-        self.write(self.crate_dir)
+        """
+        Save the crate to the original output directory passed to the BatchConvert tool.  
+        This function will also parse the params file with the parameter values used during the run and move the files around accordingly (to avoid data-duplication).   
+        """
+        self._parse_params_and_reorganize_files()
+        
+        # Add name, description and license to root dataset, needed for a valid crate
+        if not self.name and self._src_dir:
+            self.name = f"BatchConvert wf runcrate - converted directory '{self._src_dir}'"
+
+        if not self.description and self._conversion_format and self._src_dir:
+            self.description = f"Worfklow run crate describing conversion of images in directory '{self._src_dir}' to format {self._conversion_format} using BatchConvert"
+                
+        self.crate.write(self.crate_dir)
     
 
 def move_content_to_subdir(base_directory:str|Path, subdirectory_name = "converted_images", exclude:List[str]|List[Path] = []) -> Path:
@@ -457,7 +458,10 @@ def write_workflow_run_crate(batch_convert_repo_dir:str, param_dir:str) :
     -------
     directory of the original images to convert
     """
-    crate = BatchConvertWorkflowRunCrate(batch_convert_repo_dir, 
-                                         param_dir = param_dir)
+    crate_maker = BatchConvert_RunCrateMaker(batch_convert_repo_dir, 
+                                        param_dir = param_dir)
     
-    crate.save_crate()
+    crate_maker.save_crate()
+
+if __name__ ==  "__main__" :
+    crate_maker = BatchConvert_RunCrateMaker(repo_root_dir="..")
