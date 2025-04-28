@@ -437,7 +437,7 @@ def move_content_to_subdir(base_directory:str|Path, subdirectory_name = "convert
     
     return subdir
 
-def write_workflow_run_crate(batch_convert_repo_dir:str, param_dir:str) :
+def write_workflow_run_crate(batch_convert_repo_dir:str, param_dir:Optional[str] = None) :
     """
     After converting a dataset with batch_convert, call this function to turn the dest_dir into a Workflow Run ROCrate.  
     This function will actually move the converted images to a subdirectory "images" in the dest_dir.  
@@ -449,17 +449,12 @@ def write_workflow_run_crate(batch_convert_repo_dir:str, param_dir:str) :
     ---------------------
     path to the root directoy of batchconvert where the batchconvert utility and nextflow files are (e.g pff2ometiff.nf)  
 
-    dest_dir
-    --------
-    original destination directory for the converted images, as passed to batch convert.  
-    The images will be moved to a subdirectory "images" within this directory.  
-
     src_dir
     -------
     directory of the original images to convert
     """
     crate_maker = BatchConvert_RunCrateMaker(batch_convert_repo_dir, 
-                                        param_dir = param_dir)
+                                             param_dir = param_dir)
     
     crate_maker.save_crate()
 
