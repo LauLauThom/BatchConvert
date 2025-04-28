@@ -565,7 +565,7 @@ if __name__ == "__main__":
                 pass
             
             elif not value :
-                if key in ["use_local_scratch", "merge_files"]: # somehow for those 2 when they are false they also need to be in params.json
+                if key in ["use_local_scratch", "merge_files", "prov"]: # somehow for those when they are false they also need to be in params.json
                     cmd.append(cmdroot + ["--key", key, "--value", "%s" % value])
                 else:
                     pass

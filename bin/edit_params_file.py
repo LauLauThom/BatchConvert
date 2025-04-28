@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-This script is called with each command line argument to crate a separate entry in the params.json file.
+This script is called with each command line argument to create a separate entry in the params.json file.
 """
 import argparse
 import json
