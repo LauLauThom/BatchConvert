@@ -244,9 +244,10 @@ class BatchConvert_RunCrateMaker(object):
 
         return propertyValueEntity
     
-    def add_input_and_value_entities(self, input_key : str, input_value) :
+    def add_input_and_value_entities_for_parameter(self, input_key : str, input_value) :
         """
-        Create a FormalParameter and associated value entity for a pair of input:value.  
+        Create a FormalParameter and associated value entity for a pair of input:value representing a workflow parameter (so other than a directory or file).  
+        Add the FormalParameter entity to the list of inputs of the workflow.  
         """
         # mapping python type to the rocrate equivalent
         pytype_to_rotype = {int:"Integer", 
@@ -288,10 +289,10 @@ class BatchConvert_RunCrateMaker(object):
             raise FileNotFoundError(param_path)
         
         self.crate.add_file(param_path, 
-                      dest_path="params/params.json",
-                      properties = {"name":"parameters",
-                                    "encodingFormat":"text/json"    
-                      })
+                            dest_path="params/params.json",
+                            properties = {"name":"parameters",
+                                          "encodingFormat":"text/json"    
+                            })
         
         # first actual parameters used
         params = load_params_json(param_path)
@@ -350,16 +351,46 @@ class BatchConvert_RunCrateMaker(object):
             converted_image_dir = move_content_to_subdir(base_directory = out_dir,
                                                          subdirectory_name = "converted_images")
         
-        # Add input directory as datasets
-        self.crate.add_directory(source = image_dir,
-                           properties = {"name": "original_image_directory",
-                                        "description" : "Directory of images to convert"} ) 
-        
-        # Add output directory
-        self.crate.add_directory(source = converted_image_dir,
-                           properties = {"name": "converted_image_directory",
-                                         "description" : "Directory with converted images"} ) 
+        # Input directory
+        # Add a FormalParameter of additionalType "Dataset" (RO vocabulary for directory)
+        # this is in addition to the string 'in_path' passed to the command line
+        # also add a Directory entity with the value used for the run
+        inputdir_formal_param = self.addFormalParameter(id = "#directory_original_images",
+                                                         additionalType = "Dataset",
+                                                         name = "directory_original_images",
+                                                         description = "Directory with images in the original/proprietary file format (pff) to convert. This directory might be slightly different from the value passed to 'out_path' in the command line : when creating the ROCrate, directories are reorganised to avoid duplicating images.")
+        self.main_wf.append_to("input", inputdir_formal_param)
 
+        inputdir_value_entity = self.crate.add_directory(source = image_dir,
+                                                         properties = {"name": "directory_original_images/value",
+                                                                        "description" : "Directory with original images, used as input for this run.",
+                                                                        "exampleOfWork" : inputdir_formal_param} ) 
+        inputdir_formal_param["workExample"] = inputdir_value_entity
+
+        
+        # Output directory
+        # Add a FormalParameter under 'output' of the workflow
+        # and add a corresponding value entity for the directory
+        # Not to confuse with the FormalParameter outdir of type string, which is an input parameter to say where to save the images, not the actual directory entity
+        outputdir_formal_param = self.addFormalParameter(id = "#directory_converted_images",
+                                                        additionalType = "Dataset", # for directories
+                                                        name = "directory_converted_images",
+                                                        description = "Directory that will contain the converted images (ometiff or omezarr). It might be slightly different than the value passed in the command line for 'out_path' : when writing the ROCrate, directories might be reorganised to prevent duplicatng images."
+                                                        )
+        
+        self.main_wf.append_to("output", outputdir_formal_param)
+
+        outputdir_value_entity  = self.crate.add_directory(source = converted_image_dir,
+                                                            properties = {"name": "directory_converted_images/value",
+                                                                          "description" : "Directory with converted images for this run.",
+                                                                          "exampleOfWork" : outputdir_formal_param
+                                                                            }) 
+        
+        # Also reference the output_dir_entity (the value), from the FormalParameter (the parameter definition)
+        outputdir_formal_param["workExample"] = outputdir_value_entity
+        
+        # Parse the parameters from the json
+        # the jsons are not actually directly inputs of the BatchConvert workflow, since they are created automatically
         # Default params        
         default_param_path = self.param_dir.joinpath("params.json.default")
 
@@ -369,32 +400,68 @@ class BatchConvert_RunCrateMaker(object):
         
         # Add default param file to crate
         self.crate.add_file(default_param_path, 
-                      dest_path="params/params.json.default",
-                      properties = {"name":"default_parameters",
-                                    "encodingFormat":"text/json"    
-                      })
+                            dest_path="params/params.json.default",
+                            properties = {"name":"default_parameters",
+                                          "encodingFormat":"text/json"    
+                            })
         
         default_params = load_params_json(default_param_path)
 
         # Loop over the entries of the param dict, checking if differing from default
+        add_log = False
         for key, value in params.items():
             
             if key == "output_type":
                 self._conversion_format = cast(str, value) 
+            
+            if key == "keep_workdir" and value : # bool values are not properly encoded/decoded as bool rather as str
+                add_log = True
             
             if key in default_params:
                 
                 default_value = default_params[key]
                 
                 if value != default_value:
-                    self.add_input_and_value_entities(input_key = key,
+                    self.add_input_and_value_entities_for_parameter(input_key = key,
                                                       input_value = value)
                 #else value is default, nothing to do
             
             else : # if the key is not even in the default parameters then also add it
-                self.add_input_and_value_entities(input_key = key,
+                self.add_input_and_value_entities_for_parameter(input_key = key,
                                                   input_value = value)
-    
+        
+        if add_log:
+            
+            logfile_formal_parameter = self.addFormalParameter(id = "#nextflow-log-file",
+                                                               name = "nextflow.log",
+                                                               additionalType = "File",
+                                                               description = "Nextflow log file. Only saved if parameter 'keep_workdir' is True."
+                                                               )
+            
+            self.main_wf.append_to("output", logfile_formal_parameter)
+
+            if not "workdir" in params:
+                warnings.warn("Could not find key 'workdir' in file params.json. Log file wont be part of the WorkflowRunCrate.")
+            
+            else:
+
+                log_file = Path(params["workdir"], "logs", ".nextflow.log")
+
+                if log_file.is_file() : # Check if it is an existing file
+                    logfile_entity = self.crate.add_file(source = log_file,
+                                                         dest_path = "nextflow.log", # saved it in the crate as nextflow.log otherwise hidden file when prefixed with .
+                                                         properties = {"name" : "nextflow.log/value",
+                                                                       "encodingFormat" : "text/plain",
+                                                                       "exampleOfWork" : logfile_formal_parameter})
+                    
+                    # vice-versa, also mention the log File entity in the FormalParameter
+                    logfile_formal_parameter["workExample"] = logfile_entity
+
+
+                else:
+                    warnings.warn(f"Could not find log file {log_file}, it won't be added to WorkflowRunCrate.")
+
+                    
     def save_crate(self):
         """
         Save the crate to the original output directory passed to the BatchConvert tool.  

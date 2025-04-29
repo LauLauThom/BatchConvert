@@ -98,7 +98,7 @@ if __name__ == '__main__':
     os.chdir(curpath)
 
     # Create a run crate if the flag is set
-    if args.prov:
+    if args.prov == "True": # The boolean value are not properly encoded in the params.json so they are returned as string
         crate = write_workflow_run_crate(batch_convert_repo_dir = batchconvert_root_dir,
                                          param_dir = parampath) # type: ignore
 
