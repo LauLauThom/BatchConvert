@@ -135,24 +135,7 @@ class BatchConvert_RunCrateMaker(object):
                                                             main=True, 
                                                             lang = bash))  # type: ignore
 
-        # Adding the subworkflows has part of the WF crate
-        # For a run, one could omit the one not used, or only mention the one used via a createAction
-        # Same process, create the entities and add them to the crate (done in one go by add_workflow here), then link them to the main wf
-        workflow_tiff = self.crate.add_workflow(source = os.path.join(batch_convert_root_directory, "pff2omezarr.nf"),
-                                                main = False,
-                                                lang = "nextflow")
-
-        workflow_zarr = self.crate.add_workflow(source = os.path.join(batch_convert_root_directory, "pff2ometiff.nf"), 
-                                                main = False,
-                                                lang = "nextflow")
-
-        # Add description to the secondary workflow
-        desc_template = "Nextflow workflow executed when passing the argument (i.e converting to) '{}' as first argument to the BatchConvert utility."
-        workflow_tiff["description"] = desc_template.format("ometiff") # type: ignore
-        workflow_zarr["description"] = desc_template.format("omezarr") # type: ignore
-
-        self.main_wf["hasPart"] = [workflow_tiff, workflow_zarr]  # type: ignore
-        self.main_wf["url"]     = ["https://github.com/Euro-BioImaging/BatchConvert"]
+        self._add_workflows(batch_convert_root_directory)
 
         # Add the authors and institution potentially
         # works but not added as author of the workflow
@@ -199,6 +182,35 @@ class BatchConvert_RunCrateMaker(object):
         Reference to the main CreateAction, with the main workflow as instrument
         The reference can be used to add data entities to the object/results attributes (i.e documenting values taken by the parameters during the run).
         """
+
+    def _add_workflows(self, batch_convert_root_directory:str):
+        """
+        Add main workflow entity (BatchConvert) and subworkflows (nextflow) called by the main workflow.  
+        The subworkflows are added as part of the main workflow, so they can be referenced in the CreateAction.
+        """
+        # the wf file will be copied from the source, to the directory where the crate will be saved (using crate.write)
+        self.main_wf = cast(Entity, self.crate.add_workflow(source = os.path.join(batch_convert_root_directory, "batchconvert"), 
+                                                            main=True, 
+                                                            lang = bash))  # type: ignore
+
+        # Adding the subworkflows has part of the WF crate
+        # For a run, one could omit the one not used, or only mention the one used via a createAction
+        # Same process, create the entities and add them to the crate (done in one go by add_workflow here), then link them to the main wf
+        workflow_tiff = self.crate.add_workflow(source = os.path.join(batch_convert_root_directory, "pff2omezarr.nf"),
+                                                main = False,
+                                                lang = "nextflow")
+
+        workflow_zarr = self.crate.add_workflow(source = os.path.join(batch_convert_root_directory, "pff2ometiff.nf"), 
+                                                main = False,
+                                                lang = "nextflow")
+
+        # Add description to the secondary workflow
+        desc_template = "Nextflow workflow executed when passing the argument (i.e converting to) '{}' as first argument to the BatchConvert utility."
+        workflow_tiff["description"] = desc_template.format("ometiff") # type: ignore
+        workflow_zarr["description"] = desc_template.format("omezarr") # type: ignore
+
+        self.main_wf["hasPart"] = [workflow_tiff, workflow_zarr]  # type: ignore
+        self.main_wf["url"]     = ["https://github.com/Euro-BioImaging/BatchConvert"]
 
 
     def _process_param_json(self):
