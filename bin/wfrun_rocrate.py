@@ -45,6 +45,12 @@ class BatchConvert_RunCrateMaker(object):
         str:"Text",
         bool:"Boolean",
     }
+
+    # Dict with optional description for the parameters of BatchConvert that are added to the crate.
+    # Used in add_FormalParameter. 
+    PARAMETERS_TO_DESCRIPTION = {
+        "prov" : "If a WorkflowRun RO Crate should be created for the run, i.e the output directory is turned into a ROCrate.",
+    }
     
     def __init__(self, 
                  batch_convert_root_directory : str, 
@@ -168,6 +174,10 @@ class BatchConvert_RunCrateMaker(object):
         Reference to the main CreateAction, with the main workflow as instrument.  
         The reference can be used to add data entities to the object/results attributes (i.e documenting values taken by the parameters during the run).
         """
+        
+        # Process the content of the json, adding FormalParameter and PropertyValue entities to the main workflow and main action.
+        self._process_param_json()
+
 
     def _add_workflows(self, batch_convert_root_directory:str):
         """
@@ -346,14 +356,15 @@ class BatchConvert_RunCrateMaker(object):
         except KeyError:
             raise TypeError("input_value should be of type int, str or bool.")
 
+        
         ## First FormalParameter
         formal_param_entity = self._add_FormalParameter(
             id = input_key,
             additionalType = formal_parameter_type, # type: ignore
             name = input_key,
+            description = self.PARAMETERS_TO_DESCRIPTION.get(input_key), # add custom description if available, None otherwise 
             valueRequired = input_key in ("in_path", "out_path"),
         )
-
 
         ## Then associated PropertyValue entity
         property_value_entity = self._add_PropertyValue(
@@ -488,12 +499,6 @@ class BatchConvert_RunCrateMaker(object):
         # as well as in the main action results
         outputdir_formal_param["workExample"] = outputdir_value_entity
         self.main_action.append_to("result", outputdir_value_entity)
-
-        
-        # Parse the parameters from the json
-        # the jsons are not actually directly inputs of the BatchConvert workflow, since they are created automatically
-        # Default params     
-        self._process_param_json()   
 
                     
     def save_crate(self):
