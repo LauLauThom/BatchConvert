@@ -38,9 +38,16 @@ class BatchConvert_RunCrateMaker(object):
     Custom class for the BatchConvertWorkflowRunCrate, adding convenience functions.  
     Dont directly extend a ROCrate, we dont want to give the option to save the crate anywhere, since we also need to move files around.  
     """
+
+    # mapping python type to the rocrate equivalent
+    PY_TYPE_TO_RO_TYPE = {
+        int:"Integer", 
+        str:"Text",
+        bool:"Boolean",
+    }
     
     def __init__(self, 
-                 repo_root_dir : str, 
+                 batch_convert_root_directory : str, 
                  param_dir:Optional[str] = None, 
                  name = "", 
                  description = "", 
@@ -49,8 +56,8 @@ class BatchConvert_RunCrateMaker(object):
         Create a workflow run crate after conversion of an image dataset with BatchConvert.  
         This constructor only populates the default infos that do not change, but does not parse the json files with the actual parameter values.   
         
-        repo_root_dir
-        -------------
+        batch_convert_root_directory
+        ----------------------------
         Where the BatchConvert script files are.
 
         param_dir
@@ -79,8 +86,11 @@ class BatchConvert_RunCrateMaker(object):
             raise FileNotFoundError(self.param_dir)
 
         # Declare varaibles that should be populated by _parseParams if the params.json file exists in param_dir
-        self._conversion_format : Optional[str] # conversion format
-        self._src_dir : Optional[str]
+        self._conversion_format : Optional[str]
+        """Conversion format used for the run, e.g "ometiff" or "omezarr"."""
+
+        self._src_dir_name : Optional[str]
+        """Name of the source directory, i.e the directory of the original images to convert."""
 
         # crate.add_workflow("batchconvert", main=True, lang = "shell") # throws an error, currently lang has to be one of "cwl", "galaxy", "knime", "nextflow", "snakemake", "compss", "autosubmit"
         # However one can also pass a ComputerLanguage object to lang, see https://github.com/ResearchObject/ro-crate-py/issues/218#issuecomment-2753694857
@@ -92,59 +102,18 @@ class BatchConvert_RunCrateMaker(object):
         self.crate.add(bash) # need to add the item first then reference it
 
         # the wf file will be copied from the source, to the directory where the crate will be saved (using crate.write)
-        self.main_wf = cast(Entity, self.crate.add_workflow(source = os.path.join(repo_root_dir, "batchconvert"), 
+        self.main_wf = cast(Entity, self.crate.add_workflow(source = os.path.join(batch_convert_root_directory, "batchconvert"), 
                                                             main=True, 
                                                             lang = bash))  # type: ignore
-        """
-        # Create input parameters
-        param_format = self.crate.addFormalParameter(id = "#conversion_format",
-                                               additionalType = "Text",
-                                               name = "conversion_format",
-                                               valueRequired = True,
-                                               description = "Either 'ometiff' or 'omezarr'")
-        
-        param_src_dir = self.crate.addFormalParameter(id = "#src_dir",
-                                                additionalType = "Text",
-                                                name = "src_dir",
-                                                valueRequired = True,
-                                                description = "Input directory with images to convert.") 
-        
-        param_dst_dir = self.crate.addFormalParameter(id = "#dest_dir",
-                                                additionalType = "Text",
-                                                name = "dest_dir",
-                                                valueRequired = True,
-                                                description = "Output directory with converted images.") 
-        
-        
-        param_merge_files = self.crate.addFormalParameter(id = "#merge_files",
-                                                    additionalType = "Boolean",
-                                                    name = "merge_files",
-                                                    valueRequired = False,
-                                                    defaultValue = False,
-                                                    description = "Flag --merge_files, if multiple source files should be concatenated into a single ome-tiff/ome-zarr. Can be used together with the concatenation_order parameter to instruct the dimensions, otherwise batchconvert will automatically group datasets (see the doc).")
-            
-        param_concatenation_order = self.crate.addFormalParameter(id = "#concatenation_order",
-                                                            additionalType = "Text",
-                                                            name = "concatenation_order",
-                                                            valueRequired = False,
-                                                            defaultValue = "auto",
-                                                            description = "Can be used with the --merge_files flag to pass custom dimensions specifiers.")
-                        
-        self.main_wf["input"] = [param_format, 
-                            param_src_dir,
-                            param_dst_dir,
-                            param_merge_files, 
-                            param_concatenation_order]
-        """
 
         # Adding the subworkflows has part of the WF crate
         # For a run, one could omit the one not used, or only mention the one used via a createAction
         # Same process, create the entities and add them to the crate (done in one go by add_workflow here), then link them to the main wf
-        workflow_tiff = self.crate.add_workflow(source = os.path.join(repo_root_dir, "pff2omezarr.nf"),
+        workflow_tiff = self.crate.add_workflow(source = os.path.join(batch_convert_root_directory, "pff2omezarr.nf"),
                                                 main = False,
                                                 lang = "nextflow")
 
-        workflow_zarr = self.crate.add_workflow(source = os.path.join(repo_root_dir, "pff2ometiff.nf"), 
+        workflow_zarr = self.crate.add_workflow(source = os.path.join(batch_convert_root_directory, "pff2ometiff.nf"), 
                                                 main = False,
                                                 lang = "nextflow")
 
@@ -203,8 +172,7 @@ class BatchConvert_RunCrateMaker(object):
         """
         
 
-
-    def addFormalParameter(self,
+    def _add_FormalParameter(self,
                            id: str, 
                            additionalType : Literal["Text", "Boolean", "Integer", "Dataset", "File"], 
                            name:str, 
@@ -235,11 +203,13 @@ class BatchConvert_RunCrateMaker(object):
                                                                 identifier = get_identifier(id),
                                                                 properties = properties)))
     
-    def add_PropertyValue(self, value, param_entity : ContextEntity) -> ContextEntity:
+
+    def _add_PropertyValue(self, value, param_entity : ContextEntity) -> ContextEntity:
         """
         Create a PropertyValue entity with the value taken by a param_entity during a run.
         The PropertyValue will have the same id than the param entity with suffix "/value".  
-        The field name is however the same than the FormalParameter.  
+        The field 'name' is however the same than the FormalParameter.  
+        The returned PropertyValue can be listed nder 'object' or 'result' of the main CreateAction (the one for the main run).
         """
         properties = {"@type" : "PropertyValue",
                       "name"  : param_entity["name"],
@@ -253,29 +223,30 @@ class BatchConvert_RunCrateMaker(object):
 
         return propertyValueEntity
     
-    def add_input_and_value_entities_for_parameter(self, input_key : str, input_value) :
+
+    def _add_input_and_value_entities_for_parameter(self, input_key : str, input_value) :
         """
-        Create a FormalParameter and associated value entity for a pair of input:value representing a workflow parameter (so other than a directory or file).  
+        Create a FormalParameter and associated value entity for a pair of input:value 
+        representing a workflow parameter (so other than a directory or file).  
         Add the FormalParameter entity to the list of inputs of the workflow.  
         """
-        # mapping python type to the rocrate equivalent
-        pytype_to_rotype = {int:"Integer", 
-                            str:"Text",
-                            bool:"Boolean",
-                            }
+
         try:
-            formal_parameter_type = pytype_to_rotype[type(input_value)]
+            formal_parameter_type = self.PY_TYPE_TO_RO_TYPE[type(input_value)]
         except KeyError:
             raise TypeError("input_value should be an int, str or bool.")
 
-        param_entity = self.addFormalParameter(id = input_key,
-                                               additionalType = formal_parameter_type, # type: ignore
-                                               name = input_key,
-                                               valueRequired = input_key in ("in_path", "out_path"),
-                                               )
+        param_entity = self._add_FormalParameter(
+            id = input_key,
+            additionalType = formal_parameter_type, # type: ignore
+            name = input_key,
+            valueRequired = input_key in ("in_path", "out_path"),
+        )
+
+        # Add a FormalPararemeter and associated PropertyValue for this parameter
         self.main_wf.append_to("input", param_entity)
         
-        _ = self.add_PropertyValue(input_value, param_entity=param_entity)
+        _ = self._add_PropertyValue(input_value, param_entity=param_entity)
 
 
     def _parse_params_and_reorganize_files(self):
@@ -298,7 +269,8 @@ class BatchConvert_RunCrateMaker(object):
             raise FileNotFoundError(param_path)
         
         # Not listing this params.json as an input of the main CreateAction
-        # it is not directly passed to the BatchConvert command line, it should rather be an input of one of the subworkflows (actual nexflow pipeline) 
+        # it is not directly passed to the BatchConvert command line
+        # it should rather be an input of one of the subworkflows (actual nexflow pipeline) 
         self.crate.add_file(param_path, 
                             dest_path="params/params.json",
                             properties = {"name":"parameters",
@@ -314,7 +286,7 @@ class BatchConvert_RunCrateMaker(object):
         out_dir = Path(params["out_path"])
 
         # populate the dataset name, just for the crate description
-        self._src_dir = in_dir.name
+        self._src_dir_name = in_dir.name
 
         # Handle the different cases of input/output directory structure
         # because the rpyrocrate package copy the directory referenced in the json, unless they are already in the right place
@@ -354,7 +326,7 @@ class BatchConvert_RunCrateMaker(object):
         
         # any other case : the input directory is somewhere and the input dir somewhere unrelated, then move the content of the output directory to a subdirectory
         # and use the original output directory as the crate directory
-        # TODO if the output directory contains stuff already this content also get moved to the newly created subdirectory, could bew avoided?
+        # TODO if the output directory contains stuff already this content also get moved to the newly created subdirectory, could be avoided?
         else :
             self.crate_dir = out_dir
             image_dir = in_dir
@@ -368,10 +340,14 @@ class BatchConvert_RunCrateMaker(object):
         # also add a directory entity with the value used for the run
         
         # First the FormalParameter, which is a description of the input directory 
-        inputdir_formal_param = self.addFormalParameter(id = "#directory_original_images",
-                                                         additionalType = "Dataset",
-                                                         name = "directory_original_images",
-                                                         description = "Directory with images in the original/proprietary file format (pff) to convert. This directory might be slightly different from the value passed to 'out_path' in the command line : when creating the ROCrate, directories are reorganised to avoid duplicating images.")
+        inputdir_formal_param = self._add_FormalParameter(
+            id = "#directory_original_images",
+            additionalType = "Dataset",
+            name = "directory_original_images",
+            description = "Directory with images in the original/proprietary file format (pff) to convert. "
+             "This directory might be slightly different from the value passed to 'in_path' in the command line : "
+             "when creating the ROCrate, directories are reorganised to avoid duplicating images.")
+
         self.main_wf.append_to("input", inputdir_formal_param)
         
         # Then the value entity, which is the actual directory used for the run
@@ -389,7 +365,7 @@ class BatchConvert_RunCrateMaker(object):
         # Add a FormalParameter under 'output' of the workflow
         # and add a corresponding value entity for the directory
         # Not to confuse with the FormalParameter outdir of type string, which is an input parameter to say where to save the images, not the actual directory entity
-        outputdir_formal_param = self.addFormalParameter(id = "#directory_converted_images",
+        outputdir_formal_param = self._add_FormalParameter(id = "#directory_converted_images",
                                                         additionalType = "Dataset", # for directories
                                                         name = "directory_converted_images",
                                                         description = "Directory that will contain the converted images (ometiff or omezarr). It might be slightly different than the value passed in the command line for 'out_path' : when writing the ROCrate, directories might be reorganised to prevent duplicatng images."
@@ -434,7 +410,7 @@ class BatchConvert_RunCrateMaker(object):
             if key == "output_type":
                 self._conversion_format = cast(str, value) 
             
-            if key == "keep_workdir" and value : # bool values are not properly encoded/decoded as bool rather as str
+            if key == "keep_workdir" and value : 
                 add_log = True
             
             if key in default_params:
@@ -442,17 +418,17 @@ class BatchConvert_RunCrateMaker(object):
                 default_value = default_params[key]
                 
                 if value != default_value:
-                    self.add_input_and_value_entities_for_parameter(input_key = key,
+                    self._add_input_and_value_entities_for_parameter(input_key = key,
                                                                     input_value = value)
                 #else value is default, nothing to do
             
             else : # if the key is not even in the default parameters then also add it
-                self.add_input_and_value_entities_for_parameter(input_key = key,
+                self._add_input_and_value_entities_for_parameter(input_key = key,
                                                                 input_value = value)
         
         if add_log:
             
-            logfile_formal_parameter = self.addFormalParameter(id = "#nextflow-log-file",
+            logfile_formal_parameter = self._add_FormalParameter(id = "#nextflow-log-file",
                                                                name = "nextflow.log",
                                                                additionalType = "File",
                                                                description = "Nextflow log file. Only saved if parameter 'keep_workdir' is True."
@@ -490,11 +466,11 @@ class BatchConvert_RunCrateMaker(object):
         self._parse_params_and_reorganize_files()
         
         # Add name, description and license to root dataset, needed for a valid crate
-        if not self.crate.name and self._src_dir:
+        if not self.crate.name and self._src_dir_name:
             self.crate.name = f"Workflow Run RO-Crate - Conversion of images with BatchConvert"
 
-        if not self.crate.description and self._conversion_format and self._src_dir:
-            self.crate.description = f"Workflow run RO Crate describing conversion of images in directory '{self._src_dir}' to format {self._conversion_format} using BatchConvert"
+        if not self.crate.description and self._conversion_format and self._src_dir_name:
+            self.crate.description = f"Workflow run RO Crate describing conversion of images in directory '{self._src_dir_name}' to format {self._conversion_format} using BatchConvert"
                 
         self.crate.write(self.crate_dir)
     
@@ -546,4 +522,4 @@ def write_workflow_run_crate(batch_convert_repo_dir:str, param_dir:Optional[str]
     crate_maker.save_crate()
 
 if __name__ ==  "__main__" :
-    crate_maker = BatchConvert_RunCrateMaker(repo_root_dir="..")
+    crate_maker = BatchConvert_RunCrateMaker(batch_convert_root_directory="..")
