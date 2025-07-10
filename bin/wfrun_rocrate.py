@@ -121,20 +121,6 @@ class BatchConvert_RunCrateMaker(object):
         self._json_default_param = load_params_json(path_json_default_param)
         """Default parameters, as a dict."""
 
-        # crate.add_workflow("batchconvert", main=True, lang = "shell") # throws an error, currently lang has to be one of "cwl", "galaxy", "knime", "nextflow", "snakemake", "compss", "autosubmit"
-        # However one can also pass a ComputerLanguage object to lang, see https://github.com/ResearchObject/ro-crate-py/issues/218#issuecomment-2753694857
-        bash_url = "https://www.gnu.org/software/bash/"
-        bash = ComputerLanguage(self.crate, identifier="#bash", properties = {"name" : "Bash",
-                                                                              "identifier": {"@id": bash_url},
-                                                                              "url": {"@id": bash_url}
-                                                                             })
-        self.crate.add(bash) # need to add the item first then reference it
-
-        # the wf file will be copied from the source, to the directory where the crate will be saved (using crate.write)
-        self.main_wf = cast(Entity, self.crate.add_workflow(source = os.path.join(batch_convert_root_directory, "batchconvert"), 
-                                                            main=True, 
-                                                            lang = bash))  # type: ignore
-
         self._add_workflows(batch_convert_root_directory)
 
         # Add the authors and institution potentially
@@ -175,11 +161,11 @@ class BatchConvert_RunCrateMaker(object):
         self.crate.license = license
 
         #  Add the main CreateAction to the crate, that uses the main workflow as the instrument
-        self.main_action : Entity = cast(Entity, self.crate.add_action(identifier="TopLevelAction_MainRun",
+        self.main_action : Entity = cast(Entity, self.crate.add_action(identifier="batchconvert_main_run",
                                                                        instrument = self.main_wf,
                                                                        properties={"name" : "Run of BatchConvert"})) # TODO could parse the start/end time from the netflox.log file
         """
-        Reference to the main CreateAction, with the main workflow as instrument
+        Reference to the main CreateAction, with the main workflow as instrument.  
         The reference can be used to add data entities to the object/results attributes (i.e documenting values taken by the parameters during the run).
         """
 
@@ -188,6 +174,17 @@ class BatchConvert_RunCrateMaker(object):
         Add main workflow entity (BatchConvert) and subworkflows (nextflow) called by the main workflow.  
         The subworkflows are added as part of the main workflow, so they can be referenced in the CreateAction.
         """
+
+        # crate.add_workflow("batchconvert", main=True, lang = "shell") # throws an error, currently lang has to be one of "cwl", "galaxy", "knime", "nextflow", "snakemake", "compss", "autosubmit"
+        # However one can also pass a ComputerLanguage object to lang, see https://github.com/ResearchObject/ro-crate-py/issues/218#issuecomment-2753694857
+        bash_url = "https://www.gnu.org/software/bash/"
+        bash = ComputerLanguage(self.crate, identifier="#bash", properties = {"name" : "Bash",
+                                                                              "identifier": {"@id": bash_url},
+                                                                              "url": {"@id": bash_url}
+                                                                             })
+        # need to add the item first then reference it
+        self.crate.add(bash) 
+
         # the wf file will be copied from the source, to the directory where the crate will be saved (using crate.write)
         self.main_wf = cast(Entity, self.crate.add_workflow(source = os.path.join(batch_convert_root_directory, "batchconvert"), 
                                                             main=True, 
@@ -216,11 +213,74 @@ class BatchConvert_RunCrateMaker(object):
     def _process_param_json(self):
         """
         Parse the params.json file to extract the parameters used for the run.  
-        This function adds FormalParameter entities as input to the main workflow, 
-        and PropertyValue entities for the values taken by these parameters during the run.
-        The PropertyValues are added to the main CreateAction under 'object' which is the entry for values taken by input parameters.   
+        This function adds `FormalParameter` entities as `input` to the main workflow, 
+        and `PropertyValue` entities for the values taken by these parameters during the run.  
+        The `PropertyValue` are added to the main CreateAction under `object` which is the entry for values taken by input parameters.   
         """
-        pass
+        # Parse the parameters from the json
+        # the jsons are not actually directly inputs of the BatchConvert workflow, since they are created automatically
+        # rather input of the subworkflows (actual nexflow pipeline)
+
+        # Loop over the entries of the param dict, checking if differing from default
+        add_log = False
+        for key, value in self._json_param.items():
+            
+            if key == "keep_workdir" and value : 
+                add_log = True
+            
+            if key in self._json_default_param:
+                
+                default_value = self._json_default_param[key]
+                
+                if value != default_value:
+                    self._add_input_and_value_entities_for_parameter(
+                        input_key = key,
+                        input_value = value
+                        )
+                #else value is default, nothing to do
+            
+            else : # if the key is not even in the default parameters then also add it
+                self._add_input_and_value_entities_for_parameter(
+                    input_key = key,
+                    input_value = value
+                    )
+        
+        if add_log:
+            
+            logfile_formal_parameter = self._add_FormalParameter(
+                id = "#nextflow-log-file",
+                name = "nextflow.log",
+                additionalType = "File",
+                description = "Nextflow log file. Only saved if parameter 'keep_workdir' is True."
+            )
+            
+            self.main_wf.append_to("output", logfile_formal_parameter)
+
+            if not "workdir" in self._json_param:
+                warnings.warn("Could not find key 'workdir' in file params.json. Log file wont be part of the WorkflowRunCrate.")
+            
+            else:
+
+                log_file = Path(self._json_param["workdir"], "logs", ".nextflow.log")
+
+                # Check if log file is existing
+                if log_file.is_file() : 
+                    logfile_entity = self.crate.add_file(source = log_file,
+                                                         dest_path = "nextflow.log", # saved it in the crate as nextflow.log otherwise hidden file when prefixed with .
+                                                         properties = {"name" : "nextflow.log/value",
+                                                                       "encodingFormat" : "text/plain",
+                                                                       "exampleOfWork" : logfile_formal_parameter})
+                    
+                    # add the log file to the main action results, so it is listed as output of the run
+                    self.main_action.append_to("result", logfile_entity) 
+                    
+                    # vice-versa, also mention the log File entity in the FormalParameter
+                    logfile_formal_parameter["workExample"] = logfile_entity
+
+
+                else:
+                    warnings.warn(f"Could not find log file {log_file}, it won't be added to WorkflowRunCrate.")
+
 
     def _add_FormalParameter(self,
                            id: str, 
@@ -256,8 +316,8 @@ class BatchConvert_RunCrateMaker(object):
 
     def _add_PropertyValue(self, value, param_entity : ContextEntity) -> ContextEntity:
         """
-        Create a PropertyValue entity with the value taken by a param_entity during a run.
-        The PropertyValue will have the same id than the param entity with suffix "/value".  
+        Create a PropertyValue entity with the value taken by a param_entity during a run.  
+        The PropertyValue will have the same id than the param entity with suffix "/value".   
         The field 'name' is however the same than the FormalParameter.  
         The returned PropertyValue can be listed nder 'object' or 'result' of the main CreateAction (the one for the main run).
         """
@@ -274,29 +334,42 @@ class BatchConvert_RunCrateMaker(object):
         return propertyValueEntity
     
 
-    def _add_input_and_value_entities_for_parameter(self, input_key : str, input_value) :
+    def _add_input_and_value_entities_for_parameter(self, input_key : str, input_value:int | str | bool):
         """
-        Create a FormalParameter and associated value entity for a pair of input:value 
+        Create a FormalParameter and associated value entity for a pair of (input, value) 
         representing a workflow parameter (so other than a directory or file).  
-        Add the FormalParameter entity to the list of inputs of the workflow.  
+        Add the FormalParameter entity to the list of inputs of the workflow, and the value entity to the main CreateAction under 'object'.
         """
 
         try:
             formal_parameter_type = self.PY_TYPE_TO_RO_TYPE[type(input_value)]
         except KeyError:
-            raise TypeError("input_value should be an int, str or bool.")
+            raise TypeError("input_value should be of type int, str or bool.")
 
-        param_entity = self._add_FormalParameter(
+        ## First FormalParameter
+        formal_param_entity = self._add_FormalParameter(
             id = input_key,
             additionalType = formal_parameter_type, # type: ignore
             name = input_key,
             valueRequired = input_key in ("in_path", "out_path"),
         )
 
-        # Add a FormalPararemeter and associated PropertyValue for this parameter
-        self.main_wf.append_to("input", param_entity)
+
+        ## Then associated PropertyValue entity
+        property_value_entity = self._add_PropertyValue(
+            value=input_value, 
+            param_entity=formal_param_entity
+        )
         
-        _ = self._add_PropertyValue(input_value, param_entity=param_entity)
+        # Mention the PropertyValue entity in the FormalParameter, as an example of work
+        formal_param_entity["workExample"] = property_value_entity
+
+        # Add the FormalParameter to the input of the main workflow
+        self.main_wf.append_to("input", formal_param_entity)
+
+        # Add the PropertyValue entity to the main action, 
+        # as an object (i.e input parameter value) for a run
+        self.main_action.append_to("object", property_value_entity)
 
 
     def _parse_params_and_reorganize_files(self):
@@ -366,9 +439,11 @@ class BatchConvert_RunCrateMaker(object):
         # Input directory
         # Add a FormalParameter of additionalType "Dataset" (RO vocabulary for directory)
         # this is in addition to the string 'in_path' passed to the command line
-        # also add a directory entity with the value used for the run
+        # also add a directory entity with the value for the input directory used for the run
+        # not sure if the FormalParameter with type "Dataset@ should be listed, not really a parameter of the workflow
         
-        # First the FormalParameter, which is a description of the input directory 
+        # First the FormalParameter, which is a description of the input directory, using the type Dataset
+        # so different from the string "in_path"
         inputdir_formal_param = self._add_FormalParameter(
             id = "#directory_original_images",
             additionalType = "Dataset",
@@ -417,59 +492,8 @@ class BatchConvert_RunCrateMaker(object):
         
         # Parse the parameters from the json
         # the jsons are not actually directly inputs of the BatchConvert workflow, since they are created automatically
-        # Default params        
-
-        # Loop over the entries of the param dict, checking if differing from default
-        add_log = False
-        for key, value in self._json_param.items():
-            
-            if key == "keep_workdir" and value : 
-                add_log = True
-            
-            if key in self._json_default_param:
-                
-                default_value = self._json_default_param[key]
-                
-                if value != default_value:
-                    self._add_input_and_value_entities_for_parameter(input_key = key,
-                                                                     input_value = value)
-                #else value is default, nothing to do
-            
-            else : # if the key is not even in the default parameters then also add it
-                self._add_input_and_value_entities_for_parameter(input_key = key,
-                                                                input_value = value)
-        
-        if add_log:
-            
-            logfile_formal_parameter = self._add_FormalParameter(id = "#nextflow-log-file",
-                                                               name = "nextflow.log",
-                                                               additionalType = "File",
-                                                               description = "Nextflow log file. Only saved if parameter 'keep_workdir' is True."
-                                                               )
-            
-            self.main_wf.append_to("output", logfile_formal_parameter)
-
-            if not "workdir" in self._json_default_param:
-                warnings.warn("Could not find key 'workdir' in file params.json. Log file wont be part of the WorkflowRunCrate.")
-            
-            else:
-
-                log_file = Path(self._json_default_param["workdir"], "logs", ".nextflow.log")
-
-                # Check if log file is existing
-                if log_file.is_file() : 
-                    logfile_entity = self.crate.add_file(source = log_file,
-                                                         dest_path = "nextflow.log", # saved it in the crate as nextflow.log otherwise hidden file when prefixed with .
-                                                         properties = {"name" : "nextflow.log/value",
-                                                                       "encodingFormat" : "text/plain",
-                                                                       "exampleOfWork" : logfile_formal_parameter})
-                    
-                    # vice-versa, also mention the log File entity in the FormalParameter
-                    logfile_formal_parameter["workExample"] = logfile_entity
-
-
-                else:
-                    warnings.warn(f"Could not find log file {log_file}, it won't be added to WorkflowRunCrate.")
+        # Default params     
+        self._process_param_json()   
 
                     
     def save_crate(self):
