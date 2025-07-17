@@ -1,2 +1,5 @@
 pythonexe
 changes.md
+*.pyc
+.DS_Store
+*.code-workspace
